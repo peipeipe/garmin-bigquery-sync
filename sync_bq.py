@@ -132,7 +132,8 @@ def main():
     # Tables to sync (add more as needed)
     tables_to_sync = [
         'daily_summary',
-        'activities'
+        'activities',
+        'sleep'
     ]
     
     print(f"📋 Tables to sync: {', '.join(tables_to_sync)}")
