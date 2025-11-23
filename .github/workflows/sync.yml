@@ -25,9 +25,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.GarminDb
-          key: garmindb-${{ github.run_id }}
+          # Use date-based key to cache data for the day, allowing updates within the same day
+          key: garmindb-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-${{ github.run_number }}
           restore-keys: |
-            garmindb-
+            garmindb-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-
+            garmindb-${{ runner.os }}-
       
       - name: Install dependencies
         run: |

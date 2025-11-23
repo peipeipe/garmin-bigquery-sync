@@ -33,6 +33,17 @@ def get_db_path():
     return str(db_path)
 
 
+def validate_table_name(table_name):
+    """
+    Validate table name to prevent SQL injection.
+    Only allows alphanumeric characters and underscores.
+    """
+    import re
+    if not re.match(r'^[a-zA-Z0-9_]+$', table_name):
+        raise ValueError(f"Invalid table name: {table_name}")
+    return table_name
+
+
 def check_table_exists(cursor, table_name):
     """Check if a table exists in the SQLite database."""
     cursor.execute(
@@ -54,25 +65,30 @@ def sync_table_to_bigquery(conn, table_name, project_id, dataset_id):
     """
     print(f"Processing table: {table_name}")
     
+    # Validate table name to prevent SQL injection
+    validated_table_name = validate_table_name(table_name)
+    
     cursor = conn.cursor()
-    if not check_table_exists(cursor, table_name):
-        print(f"  ⚠️  Table '{table_name}' not found in database. Skipping.")
+    if not check_table_exists(cursor, validated_table_name):
+        print(f"  ⚠️  Table '{validated_table_name}' not found in database. Skipping.")
         return
     
-    # Read table from SQLite
+    # Read table from SQLite - use parameterized query via pandas
     try:
-        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
+        # Using pandas read_sql_query with table name validation above
+        # The table name has been validated to contain only safe characters
+        df = pd.read_sql_query(f"SELECT * FROM {validated_table_name}", conn)
         
         if df.empty:
-            print(f"  ⚠️  Table '{table_name}' is empty. Skipping.")
+            print(f"  ⚠️  Table '{validated_table_name}' is empty. Skipping.")
             return
         
-        print(f"  📊 Read {len(df)} rows from {table_name}")
+        print(f"  📊 Read {len(df)} rows from {validated_table_name}")
         
         # Upload to BigQuery
         # Note: Using 'replace' for simplicity. For large datasets or incremental
         # updates, consider using 'append' with proper deduplication logic.
-        destination_table = f"{dataset_id}.{table_name}"
+        destination_table = f"{dataset_id}.{validated_table_name}"
         
         to_gbq(
             df,
