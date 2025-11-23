@@ -22,6 +22,7 @@ def main():
     args = sys.argv[1:]
     
     # Statistics flags that can be passed to garmindb_cli.py
+    # Note: -A (capital A) is for --all, -a (lowercase a) is for --activities
     stats_flags = {'-A', '--all', '-a', '--activities', '-m', '--monitoring', 
                    '-r', '--rhr', '-s', '--sleep', '-w', '--weight'}
     
