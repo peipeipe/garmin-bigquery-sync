@@ -1,0 +1,5 @@
+garmindb
+pandas
+pandas-gbq
+db-dtypes
+google-auth
