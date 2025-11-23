@@ -11,6 +11,7 @@ Configuration is via environment variables:
 """
 
 import os
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -38,7 +39,6 @@ def validate_table_name(table_name):
     Validate table name to prevent SQL injection.
     Only allows alphanumeric characters and underscores.
     """
-    import re
     if not re.match(r'^[a-zA-Z0-9_]+$', table_name):
         raise ValueError(f"Invalid table name: {table_name}")
     return table_name
