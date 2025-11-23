@@ -148,11 +148,36 @@ To see all available tables, you can explore the GarminDB SQLite database:
 sqlite3 ~/.GarminDb/garmin.db ".tables"
 ```
 
+## Technical Details
+
+### GarminDB Wrapper
+
+This project includes a wrapper script (`garmindb_wrapper.py`) that prevents a TypeError that can occur when calling `garmindb_cli.py` without statistics arguments. The wrapper ensures that operations requiring statistics (download, import, copy) always have appropriate flags set.
+
+The wrapper automatically adds the `--all` flag when:
+- Operations like `--download`, `--import`, or `--copy` are specified
+- No statistics flags (`--activities`, `--monitoring`, `--sleep`, etc.) are provided
+
+This prevents the internal `stats` parameter from being `None`, which would cause a TypeError when the code tries to check `if Statistics.activities in stats:`.
+
 ## Troubleshooting
 
 ### Workflow Fails with "GarminDB database not found"
 
 The first run might fail if Garmin data hasn't been downloaded yet. The workflow is configured to continue even if the import step fails. After the first successful import, subsequent runs should work.
+
+### TypeError with stats parameter
+
+If you see errors related to `TypeError: argument of type 'NoneType' is not iterable`, ensure you're using the wrapper script:
+```bash
+# Instead of:
+garmindb_cli.py --download --import --analyze --latest
+
+# Use:
+python garmindb_wrapper.py --download --import --analyze --latest
+```
+
+The GitHub Actions workflow already uses the wrapper script automatically.
 
 ### Authentication Issues
 
@@ -191,8 +216,11 @@ pip install -r requirements.txt
    # Configure credentials
    garmindb_cli.py --config
    
-   # Import data
-   garmindb_cli.py --import --analyze --latest
+   # Import data using the wrapper to prevent TypeError
+   python garmindb_wrapper.py --download --import --analyze --latest
+   
+   # Or with specific statistics
+   garmindb_cli.py --download --import --analyze --latest --all
    ```
 
 2. Set up Google Cloud credentials:
