@@ -13,6 +13,10 @@ ENV/
 *.db-shm
 *.db-wal
 
+# GarminDB directories
+.GarminDb/
+.garth/
+
 # Configuration and secrets
 *.json
 GarminConnectConfig.json

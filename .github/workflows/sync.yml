@@ -1,9 +1,9 @@
 name: Sync Garmin Data to BigQuery
 
 on:
-  # Run daily at 2 AM UTC
+  # Run daily at 9 PM UTC
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 21 * * *'
   
   # Allow manual trigger
   workflow_dispatch:
@@ -27,7 +27,9 @@ jobs:
       - name: Cache GarminDB data
         uses: actions/cache@v4
         with:
-          path: ~/.GarminDb
+          path: |
+            ~/.GarminDb
+            ~/.garth
           # Use date-based key to cache data for the day, allowing updates within the same day
           key: garmindb-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-${{ github.run_number }}
           restore-keys: |
@@ -47,6 +49,9 @@ jobs:
             "credentials": {
               "user": "${{ secrets.GARMIN_USER }}",
               "password": "${{ secrets.GARMIN_PASSWORD }}"
+            },
+            "data": {
+              "download_days": 3
             }
           }
           EOF
@@ -59,9 +64,9 @@ jobs:
       - name: Import Garmin data
         continue-on-error: true
         run: |
-          # Import and analyze latest Garmin data
+          # Download, import and analyze latest Garmin data
           # Allow this to fail in case of auth issues or no new data
-          garmindb_cli.py --import --analyze --latest || echo "Import failed or no new data available"
+          garmindb_cli.py --download --import --analyze --latest || echo "Import failed or no new data available"
       
       - name: Sync to BigQuery
         env:
