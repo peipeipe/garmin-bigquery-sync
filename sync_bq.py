@@ -97,7 +97,7 @@ TABLE_SCHEMAS = {
 }
 
 
-def ensure_dataset_exists(client, project_id, dataset_id):
+def ensure_dataset_exists(client, project_id, dataset_id, location=None):
     """
     Ensure BigQuery dataset exists, create if not.
     
@@ -105,16 +105,20 @@ def ensure_dataset_exists(client, project_id, dataset_id):
         client: BigQuery client instance
         project_id: GCP project ID
         dataset_id: BigQuery dataset ID
+        location: Dataset location (default: US). Can be set via DATASET_LOCATION env var.
     """
+    if location is None:
+        location = os.getenv('DATASET_LOCATION', 'US')
+    
     dataset_ref = f"{project_id}.{dataset_id}"
     
     try:
         client.get_dataset(dataset_ref)
         print(f"  ✓ Dataset {dataset_ref} already exists")
     except google_exceptions.NotFound:
-        print(f"  Creating dataset {dataset_ref}...")
+        print(f"  Creating dataset {dataset_ref} in {location}...")
         dataset = bigquery.Dataset(dataset_ref)
-        dataset.location = "US"  # You can make this configurable if needed
+        dataset.location = location
         client.create_dataset(dataset, timeout=30)
         print(f"  ✓ Dataset {dataset_ref} created")
     except Exception as e:

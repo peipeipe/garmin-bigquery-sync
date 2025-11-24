@@ -128,6 +128,9 @@ ORDER BY day DESC
 
 - `GCP_PROJECT_ID`（必須）：Google CloudプロジェクトID
 - `DATASET_ID`（オプション）：BigQueryデータセット名（デフォルト：`garmin_data`）
+- `DATASET_LOCATION`（オプション）：BigQueryデータセットのロケーション（デフォルト：`US`）
+  - 例：`US`, `EU`, `asia-northeast1`（東京）など
+  - GitHub Actions workflowで設定する場合は環境変数に追加してください
 
 ### テーブルの追加
 
