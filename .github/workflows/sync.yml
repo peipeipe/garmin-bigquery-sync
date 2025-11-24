@@ -65,8 +65,9 @@ jobs:
         continue-on-error: true
         run: |
           # Download, import and analyze latest Garmin data
+          # Using wrapper to prevent TypeError when stats is None
           # Allow this to fail in case of auth issues or no new data
-          garmindb_cli.py --download --import --analyze --latest || echo "Import failed or no new data available"
+          python garmindb_wrapper.py --download --import --analyze --latest || echo "Import failed or no new data available"
       
       - name: Sync to BigQuery
         env:
