@@ -44,8 +44,8 @@ GitHub Actionsを使用して、Garmin Connectのデータを自動的にGoogle 
 3. 名前：`garmin-sync`（または任意の名前）
 4. **作成して続行**をクリック
 5. 以下のロールを付与：
-   - **BigQueryデータ編集者**
-   - **BigQueryジョブユーザー**
+   - **BigQuery データ編集者**
+   - **BigQuery ジョブユーザー**
 6. **続行**、**完了**をクリック
 
 #### サービスアカウントキーの生成
