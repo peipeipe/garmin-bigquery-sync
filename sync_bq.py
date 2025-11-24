@@ -21,14 +21,38 @@ from pandas_gbq import to_gbq
 
 
 def get_db_path():
-    """Get the path to the GarminDB SQLite database."""
+    """
+    Get the path to the GarminDB SQLite database.
+    
+    Returns:
+        str: Path to the database file
+        
+    Raises:
+        FileNotFoundError: If the database doesn't exist with helpful error message
+    """
     home = Path.home()
-    db_path = home / '.GarminDb' / 'garmin.db'
+    db_dir = home / '.GarminDb'
+    db_path = db_dir / 'garmin.db'
     
     if not db_path.exists():
+        # Check if the directory exists
+        if not db_dir.exists():
+            raise FileNotFoundError(
+                f"GarminDB directory not found at {db_dir}. "
+                "This is likely the first run. Please ensure the 'Import Garmin data' "
+                "step in the workflow completed successfully to create the database."
+            )
+        
+        # Directory exists but no database file
         raise FileNotFoundError(
             f"GarminDB database not found at {db_path}. "
-            "Please run garmindb_cli.py first to create the database."
+            "The database directory exists but the database file hasn't been created yet. "
+            "This may be because:\n"
+            "  1. This is the first run and data import hasn't completed\n"
+            "  2. The import step failed (check workflow logs)\n"
+            "  3. No data has been downloaded from Garmin Connect yet\n"
+            "\n"
+            "To create the database, run: python garmindb_wrapper.py --download --import --analyze --latest --all"
         )
     
     return str(db_path)

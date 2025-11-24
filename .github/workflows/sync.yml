@@ -51,10 +51,13 @@ jobs:
               "password": "${{ secrets.GARMIN_PASSWORD }}"
             },
             "data": {
-              "download_days": 3
+              "download_days": 3,
+              "download_latest_activities": 10,
+              "download_all_activities": 100
             }
           }
           EOF
+          echo "Config file created at ~/.GarminDb/GarminConnectConfig.json"
       
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -62,16 +65,42 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       
       - name: Import Garmin data
+        id: import_data
         continue-on-error: true
         run: |
           # Download, import and analyze latest Garmin data
           # Using wrapper to prevent TypeError when stats is None
-          # Allow this to fail in case of auth issues or no new data
-          python garmindb_wrapper.py --download --import --analyze --latest || echo "Import failed or no new data available"
+          # The wrapper also ensures config has proper defaults
+          echo "Starting Garmin data import..."
+          
+          if python garmindb_wrapper.py --download --import --analyze --latest; then
+            echo "import_success=true" >> $GITHUB_OUTPUT
+            echo "✅ Garmin data import completed successfully"
+          else
+            echo "import_success=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Garmin data import failed or no new data available"
+            echo "This may be expected on first run or when there's no new data"
+          fi
       
       - name: Sync to BigQuery
+        # Only run if import was successful and database exists
+        if: steps.import_data.outputs.import_success == 'true'
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           DATASET_ID: garmin_data
         run: |
-          python sync_bq.py
+          echo "Syncing data to BigQuery..."
+          if python sync_bq.py; then
+            echo "✅ BigQuery sync completed successfully"
+          else
+            echo "❌ BigQuery sync failed"
+            exit 1
+          fi
+      
+      - name: Skip BigQuery sync
+        # Inform user if sync was skipped
+        if: steps.import_data.outputs.import_success != 'true'
+        run: |
+          echo "⚠️ Skipping BigQuery sync because Garmin data import was not successful"
+          echo "This is expected on the first run or when there's no new data to import"
+          echo "The workflow will complete successfully, and sync will occur on the next run with data"
