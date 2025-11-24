@@ -1,112 +1,112 @@
 # garmin-bigquery-sync
 
-Automatically sync your Garmin Connect data to Google BigQuery using GitHub Actions.
+GitHub Actionsを使用して、Garmin Connectのデータを自動的にGoogle BigQueryに同期します。
 
-This project uses [GarminDB](https://github.com/tcgoetz/GarminDB) to download your Garmin Connect data into a SQLite database, then syncs it to BigQuery for analysis and visualization.
+このプロジェクトは[GarminDB](https://github.com/tcgoetz/GarminDB)を使用してGarmin ConnectのデータをSQLiteデータベースにダウンロードし、その後BigQueryに同期して分析と可視化を行います。
 
-## Features
+## 特徴
 
-- 🔄 Automatic daily sync of Garmin data to BigQuery
-- 📊 Syncs daily summaries and activities
-- 🔐 Secure credential management via GitHub Secrets
-- 💾 Caches Garmin data between runs for efficiency
-- ⚡ Manual trigger support via workflow_dispatch
+- 🔄 GarminデータをBigQueryに毎日自動同期
+- 📊 日次サマリーとアクティビティを同期
+- 🔐 GitHub Secretsによる安全な認証情報管理
+- 💾 効率化のため実行間でGarminデータをキャッシュ
+- ⚡ workflow_dispatchによる手動トリガーのサポート
 
-## Setup
+## セットアップ
 
-### 1. Google Cloud Platform Setup
+### 1. Google Cloud Platformのセットアップ
 
-#### Create a GCP Project
+#### GCPプロジェクトの作成
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Note your Project ID (e.g., `my-garmin-project`)
+1. [Google Cloud Console](https://console.cloud.google.com/)にアクセス
+2. 新しいプロジェクトを作成するか、既存のプロジェクトを選択
+3. プロジェクトID（例：`my-garmin-project`）をメモ
 
-#### Enable BigQuery API
+#### BigQuery APIの有効化
 
-1. In your GCP project, go to **APIs & Services > Library**
-2. Search for "BigQuery API"
-3. Click **Enable**
+1. GCPプロジェクトで、**APIとサービス > ライブラリ**に移動
+2. 「BigQuery API」を検索
+3. **有効にする**をクリック
 
-#### Create a BigQuery Dataset
+#### BigQueryデータセットの作成
 
-1. Go to [BigQuery Console](https://console.cloud.google.com/bigquery)
-2. Click your project name
-3. Click **Create Dataset**
-4. Dataset ID: `garmin_data` (or your preferred name)
-5. Location: Choose your preferred region
-6. Click **Create Dataset**
+1. [BigQuery Console](https://console.cloud.google.com/bigquery)にアクセス
+2. プロジェクト名をクリック
+3. **データセットを作成**をクリック
+4. データセットID：`garmin_data`（または任意の名前）
+5. ロケーション：お好みのリージョンを選択
+6. **データセットを作成**をクリック
 
-#### Create a Service Account
+#### サービスアカウントの作成
 
-1. Go to **IAM & Admin > Service Accounts**
-2. Click **Create Service Account**
-3. Name: `garmin-sync` (or your preferred name)
-4. Click **Create and Continue**
-5. Grant the following roles:
-   - **BigQuery Data Editor**
-   - **BigQuery Job User**
-6. Click **Continue**, then **Done**
+1. **IAMと管理 > サービスアカウント**に移動
+2. **サービスアカウントを作成**をクリック
+3. 名前：`garmin-sync`（または任意の名前）
+4. **作成して続行**をクリック
+5. 以下のロールを付与：
+   - **BigQuery データ編集者**
+   - **BigQuery ジョブユーザー**
+6. **続行**、**完了**をクリック
 
-#### Generate Service Account Key
+#### サービスアカウントキーの生成
 
-1. Click on the service account you just created
-2. Go to the **Keys** tab
-3. Click **Add Key > Create New Key**
-4. Choose **JSON** format
-5. Click **Create** - a JSON file will be downloaded
-6. **Keep this file secure** - you'll use it in GitHub Secrets
+1. 作成したサービスアカウントをクリック
+2. **キー**タブに移動
+3. **鍵を追加 > 新しい鍵を作成**をクリック
+4. **JSON**形式を選択
+5. **作成**をクリック - JSONファイルがダウンロードされます
+6. **このファイルを安全に保管** - GitHub Secretsで使用します
 
-### 2. GitHub Repository Setup
+### 2. GitHubリポジトリのセットアップ
 
-#### Fork or Clone This Repository
+#### このリポジトリをフォークまたはクローン
 
-Fork this repository to your GitHub account or create a new repository with these files.
+このリポジトリをGitHubアカウントにフォークするか、これらのファイルで新しいリポジトリを作成します。
 
-#### Configure GitHub Secrets
+#### GitHub Secretsの設定
 
-Go to your repository's **Settings > Secrets and variables > Actions** and add the following secrets:
+リポジトリの**設定 > シークレットと変数 > Actions**に移動して、以下のシークレットを追加します：
 
-| Secret Name | Description | Example |
+| シークレット名 | 説明 | 例 |
 |-------------|-------------|---------|
-| `GARMIN_USER` | Your Garmin Connect email/username | `user@example.com` |
-| `GARMIN_PASSWORD` | Your Garmin Connect password | `your-password` |
-| `GCP_PROJECT_ID` | Your Google Cloud Project ID | `my-garmin-project` |
-| `GCP_SA_KEY` | Contents of the service account JSON key file | Paste entire JSON contents |
+| `GARMIN_USER` | Garmin Connectのメールアドレス/ユーザー名 | `user@example.com` |
+| `GARMIN_PASSWORD` | Garmin Connectのパスワード | `your-password` |
+| `GCP_PROJECT_ID` | Google CloudプロジェクトID | `my-garmin-project` |
+| `GCP_SA_KEY` | サービスアカウントJSONキーファイルの内容 | JSON全体を貼り付け |
 
-**To add a secret:**
-1. Click **New repository secret**
-2. Enter the **Name** and **Secret** value
-3. Click **Add secret**
+**シークレットの追加方法：**
+1. **新しいリポジトリシークレット**をクリック
+2. **名前**と**シークレット**の値を入力
+3. **シークレットを追加**をクリック
 
-### 3. Running the Sync
+### 3. 同期の実行
 
-#### Automatic Schedule
+#### 自動スケジュール
 
-The workflow runs automatically every day at 2 AM UTC. You can modify the schedule in `.github/workflows/sync.yml`:
+ワークフローは毎日UTC午前2時に自動的に実行されます。`.github/workflows/sync.yml`でスケジュールを変更できます：
 
 ```yaml
 schedule:
-  - cron: '0 2 * * *'  # Daily at 2 AM UTC
+  - cron: '0 2 * * *'  # 毎日UTC午前2時
 ```
 
-#### Manual Trigger
+#### 手動トリガー
 
-1. Go to **Actions** tab in your repository
-2. Select **Sync Garmin Data to BigQuery** workflow
-3. Click **Run workflow**
-4. Select the branch and click **Run workflow**
+1. リポジトリの**Actions**タブに移動
+2. **Sync Garmin Data to BigQuery**ワークフローを選択
+3. **ワークフローを実行**をクリック
+4. ブランチを選択して**ワークフローを実行**をクリック
 
-### 4. Viewing Your Data in BigQuery
+### 4. BigQueryでデータを表示
 
-1. Go to [BigQuery Console](https://console.cloud.google.com/bigquery)
-2. Expand your project
-3. Expand the `garmin_data` dataset
-4. You should see tables like:
+1. [BigQuery Console](https://console.cloud.google.com/bigquery)にアクセス
+2. プロジェクトを展開
+3. `garmin_data`データセットを展開
+4. 以下のようなテーブルが表示されます：
    - `daily_summary`
    - `activities`
 
-#### Example Query
+#### クエリの例
 
 ```sql
 SELECT 
@@ -120,122 +120,122 @@ WHERE day >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
 ORDER BY day DESC
 ```
 
-## Configuration
+## 設定
 
-### Environment Variables
+### 環境変数
 
-The `sync_bq.py` script accepts the following environment variables:
+`sync_bq.py`スクリプトは以下の環境変数を受け入れます：
 
-- `GCP_PROJECT_ID` (required): Your Google Cloud Project ID
-- `DATASET_ID` (optional): BigQuery dataset name (default: `garmin_data`)
+- `GCP_PROJECT_ID`（必須）：Google CloudプロジェクトID
+- `DATASET_ID`（オプション）：BigQueryデータセット名（デフォルト：`garmin_data`）
 
-### Adding More Tables
+### テーブルの追加
 
-To sync additional tables from GarminDB, edit `sync_bq.py` and add table names to the `tables_to_sync` list:
+GarminDBから追加のテーブルを同期するには、`sync_bq.py`を編集して`tables_to_sync`リストにテーブル名を追加します：
 
 ```python
 tables_to_sync = [
     'daily_summary',
     'activities',
-    'sleep',           # Add more tables
-    'monitoring_hr',   # as needed
+    'sleep',           # 必要に応じて
+    'monitoring_hr',   # テーブルを追加
 ]
 ```
 
-To see all available tables, you can explore the GarminDB SQLite database:
+利用可能なすべてのテーブルを確認するには、GarminDBのSQLiteデータベースを調べることができます：
 
 ```bash
 sqlite3 ~/.GarminDb/garmin.db ".tables"
 ```
 
-## Technical Details
+## 技術詳細
 
-### GarminDB Wrapper
+### GarminDBラッパー
 
-This project includes a wrapper script (`garmindb_wrapper.py`) that prevents a TypeError that can occur when calling `garmindb_cli.py` without statistics arguments. The wrapper ensures that operations requiring statistics (download, import, copy) always have appropriate flags set.
+このプロジェクトには、統計引数なしで`garmindb_cli.py`を呼び出した際に発生する可能性のあるTypeErrorを防ぐラッパースクリプト（`garmindb_wrapper.py`）が含まれています。このラッパーは、統計を必要とする操作（download、import、copy）に常に適切なフラグが設定されていることを保証します。
 
-The wrapper automatically adds the `--all` flag when:
-- Operations like `--download`, `--import`, or `--copy` are specified
-- No statistics flags (`--activities`, `--monitoring`, `--sleep`, etc.) are provided
+ラッパーは以下の場合に自動的に`--all`フラグを追加します：
+- `--download`、`--import`、`--copy`のような操作が指定されている
+- 統計フラグ（`--activities`、`--monitoring`、`--sleep`など）が提供されていない
 
-This prevents the internal `stats` parameter from being `None`, which would cause a TypeError when the code tries to check `if Statistics.activities in stats:`.
+これにより、内部の`stats`パラメータが`None`になることを防ぎ、コードが`if Statistics.activities in stats:`をチェックしようとした際にTypeErrorが発生するのを防ぎます。
 
-## Troubleshooting
+## トラブルシューティング
 
-### Workflow Fails with "GarminDB database not found"
+### 「GarminDB database not found」でワークフローが失敗する
 
-The first run might fail if Garmin data hasn't been downloaded yet. The workflow is configured to continue even if the import step fails. After the first successful import, subsequent runs should work.
+Garminデータがまだダウンロードされていない場合、最初の実行が失敗する可能性があります。ワークフローはインポートステップが失敗しても続行するように設定されています。最初のインポートが成功した後は、その後の実行が正常に動作するはずです。
 
-### TypeError with stats parameter
+### statsパラメータのTypeError
 
-If you see errors related to `TypeError: argument of type 'NoneType' is not iterable`, ensure you're using the wrapper script:
+`TypeError: argument of type 'NoneType' is not iterable`に関連するエラーが表示される場合は、ラッパースクリプトを使用していることを確認してください：
 ```bash
-# Instead of:
+# 以下の代わりに：
 garmindb_cli.py --download --import --analyze --latest
 
-# Use:
+# 以下を使用：
 python garmindb_wrapper.py --download --import --analyze --latest
 ```
 
-The GitHub Actions workflow already uses the wrapper script automatically.
+GitHub Actionsワークフローは既にラッパースクリプトを自動的に使用しています。
 
-### Authentication Issues
+### 認証の問題
 
-- **Garmin**: Verify your `GARMIN_USER` and `GARMIN_PASSWORD` secrets are correct
-- **Google Cloud**: Ensure your service account has the necessary BigQuery permissions
-- **GCP_SA_KEY**: Make sure you pasted the entire JSON file contents, including the curly braces
+- **Garmin**：`GARMIN_USER`と`GARMIN_PASSWORD`のシークレットが正しいことを確認
+- **Google Cloud**：サービスアカウントに必要なBigQuery権限があることを確認
+- **GCP_SA_KEY**：中括弧を含むJSONファイルの全内容を貼り付けたことを確認
 
-### No Data in BigQuery
+### BigQueryにデータがない
 
-- Check the workflow logs in the **Actions** tab
-- Ensure the Garmin import step completed successfully
-- Verify that your GarminDB database has data in the tables being synced
+- **Actions**タブでワークフローログを確認
+- Garminインポートステップが正常に完了したことを確認
+- GarminDBデータベースに同期されるテーブルのデータがあることを確認
 
-## Local Development
+## ローカル開発
 
-### Prerequisites
+### 前提条件
 
-- Python 3.8+
-- Google Cloud SDK (optional, for local testing)
+- Python 3.8以上
+- Google Cloud SDK（オプション、ローカルテスト用）
 
-### Installation
+### インストール
 
 ```bash
-# Clone the repository
+# リポジトリをクローン
 git clone https://github.com/yourusername/garmin-bigquery-sync.git
 cd garmin-bigquery-sync
 
-# Install dependencies
+# 依存関係をインストール
 pip install -r requirements.txt
 ```
 
-### Running Locally
+### ローカルでの実行
 
-1. Download Garmin data:
+1. Garminデータをダウンロード：
    ```bash
-   # Configure credentials
+   # 認証情報を設定
    garmindb_cli.py --config
    
-   # Import data using the wrapper to prevent TypeError
+   # TypeErrorを防ぐためにラッパーを使用してデータをインポート
    python garmindb_wrapper.py --download --import --analyze --latest
    
-   # Or with specific statistics
+   # または特定の統計を指定
    garmindb_cli.py --download --import --analyze --latest --all
    ```
 
-2. Set up Google Cloud credentials:
+2. Google Cloud認証情報を設定：
    ```bash
    export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
    export GCP_PROJECT_ID=your-project-id
    export DATASET_ID=garmin_data
    ```
 
-3. Run the sync:
+3. 同期を実行：
    ```bash
    python sync_bq.py
    ```
 
-## Architecture
+## アーキテクチャ
 
 ```
 ┌─────────────────┐
@@ -253,14 +253,14 @@ pip install -r requirements.txt
 └─────────────────┘
 ```
 
-## License
+## ライセンス
 
 MIT
 
-## Contributing
+## コントリビューション
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+コントリビューションを歓迎します！プルリクエストをお気軽にお送りください。
 
-## Acknowledgments
+## 謝辞
 
-- [GarminDB](https://github.com/tcgoetz/GarminDB) - For the excellent Garmin data download and processing tool
+- [GarminDB](https://github.com/tcgoetz/GarminDB) - 優れたGarminデータダウンロードおよび処理ツールの提供
