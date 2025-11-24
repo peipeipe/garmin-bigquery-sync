@@ -66,7 +66,6 @@ jobs:
       
       - name: Import Garmin data
         id: import_data
-        continue-on-error: true
         run: |
           # Download, import and analyze latest Garmin data
           # Using wrapper to prevent TypeError when stats is None
@@ -74,22 +73,38 @@ jobs:
           echo "Starting Garmin data import..."
           
           if python garmindb_wrapper.py --download --import --analyze --latest; then
-            echo "import_success=true" >> $GITHUB_OUTPUT
+            echo "import_status=success" >> $GITHUB_OUTPUT
             echo "✅ Garmin data import completed successfully"
+            exit 0
           else
-            echo "import_success=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Garmin data import failed or no new data available"
-            echo "This may be expected on first run or when there's no new data"
+            exit_code=$?
+            # Check if database exists - if it does, we can still sync old data
+            if [ -f ~/.GarminDb/garmin.db ]; then
+              echo "import_status=no_new_data" >> $GITHUB_OUTPUT
+              echo "⚠️ Garmin data import returned exit code $exit_code"
+              echo "However, database exists from previous run. Will sync existing data."
+              exit 0
+            else
+              echo "import_status=failed" >> $GITHUB_OUTPUT
+              echo "❌ Garmin data import failed and no database exists"
+              exit 1
+            fi
           fi
       
       - name: Sync to BigQuery
-        # Only run if import was successful and database exists
-        if: steps.import_data.outputs.import_success == 'true'
+        # Run if import was successful OR if import had no new data but database exists
+        if: steps.import_data.outputs.import_status == 'success' || steps.import_data.outputs.import_status == 'no_new_data'
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           DATASET_ID: garmin_data
         run: |
-          echo "Syncing data to BigQuery..."
+          if [ "${{ steps.import_data.outputs.import_status }}" == "no_new_data" ]; then
+            echo "ℹ️ No new data from Garmin, but syncing existing database to BigQuery..."
+            echo "This ensures BigQuery tables are created/updated even without new data."
+          else
+            echo "Syncing new data to BigQuery..."
+          fi
+          
           if python sync_bq.py; then
             echo "✅ BigQuery sync completed successfully"
           else
@@ -97,10 +112,8 @@ jobs:
             exit 1
           fi
       
-      - name: Skip BigQuery sync
-        # Inform user if sync was skipped
-        if: steps.import_data.outputs.import_success != 'true'
+      - name: Display sync summary
+        if: steps.import_data.outputs.import_status == 'success' || steps.import_data.outputs.import_status == 'no_new_data'
         run: |
-          echo "⚠️ Skipping BigQuery sync because Garmin data import was not successful"
-          echo "This is expected on the first run or when there's no new data to import"
-          echo "The workflow will complete successfully, and sync will occur on the next run with data"
+          echo "📊 Sync completed for dataset: garmin_data"
+          echo "Check the logs above for detailed row counts per table"
