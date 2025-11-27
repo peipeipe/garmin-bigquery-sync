@@ -44,6 +44,9 @@ jobs:
       - name: Configure Garmin credentials
         run: |
           mkdir -p ~/.GarminDb
+          # Calculate date range: 30 days ago to today
+          START_DATE=$(date -d "30 days ago" +%Y-%m-%d)
+          END_DATE=$(date +%Y-%m-%d)
           cat > ~/.GarminDb/GarminConnectConfig.json << EOF
           {
             "credentials": {
@@ -54,10 +57,25 @@ jobs:
               "download_days": 3,
               "download_latest_activities": 10,
               "download_all_activities": 100
+            },
+            "stats": {
+              "monitoring": {
+                "start_date": "${START_DATE}",
+                "end_date": "${END_DATE}"
+              },
+              "activities": {
+                "start_date": "${START_DATE}",
+                "end_date": "${END_DATE}"
+              },
+              "sleep": {
+                "start_date": "${START_DATE}",
+                "end_date": "${END_DATE}"
+              }
             }
           }
           EOF
           echo "Config file created at ~/.GarminDb/GarminConnectConfig.json"
+          echo "Date range: ${START_DATE} to ${END_DATE}"
       
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
