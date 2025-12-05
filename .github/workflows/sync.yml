@@ -1,12 +1,21 @@
 name: Sync Garmin Data to BigQuery
 
 on:
-  # Run daily at 9 PM UTC
+  # Run daily at 9 PM UTC (incremental update)
   schedule:
     - cron: '0 21 * * *'
-  
-  # Allow manual trigger
+
+  # Allow manual trigger with options
   workflow_dispatch:
+    inputs:
+      sync_mode:
+        description: 'Sync mode'
+        required: true
+        default: 'incremental'
+        type: choice
+        options:
+          - incremental
+          - full_refresh
 
 jobs:
   sync:
@@ -45,9 +54,25 @@ jobs:
       - name: Configure Garmin credentials
         run: |
           mkdir -p ~/.GarminDb
-          # Calculate date range: 30 days ago to today
-          START_DATE=$(date -d "30 days ago" +%Y-%m-%d)
+
+          # Determine sync mode (default to incremental for scheduled runs)
+          SYNC_MODE="${{ inputs.sync_mode || 'incremental' }}"
+          echo "Sync mode: ${SYNC_MODE}"
+
+          # Calculate date range based on sync mode
+          if [ "$SYNC_MODE" == "full_refresh" ]; then
+            # Full refresh: get data from 2 years ago
+            START_DATE=$(date -d "2 years ago" +%Y-%m-%d)
+            DOWNLOAD_DAYS=730
+            DOWNLOAD_ACTIVITIES=1000
+          else
+            # Incremental: get last 30 days
+            START_DATE=$(date -d "30 days ago" +%Y-%m-%d)
+            DOWNLOAD_DAYS=30
+            DOWNLOAD_ACTIVITIES=50
+          fi
           END_DATE=$(date +%Y-%m-%d)
+
           cat > ~/.GarminDb/GarminConnectConfig.json << EOF
           {
             "credentials": {
@@ -55,9 +80,9 @@ jobs:
               "password": "${{ secrets.GARMIN_PASSWORD }}"
             },
             "data": {
-              "download_days": 3,
-              "download_latest_activities": 10,
-              "download_all_activities": 100,
+              "download_days": ${DOWNLOAD_DAYS},
+              "download_latest_activities": ${DOWNLOAD_ACTIVITIES},
+              "download_all_activities": ${DOWNLOAD_ACTIVITIES},
               "monitoring_start_date": "${START_DATE}",
               "monitoring_end_date": "${END_DATE}",
               "activities_start_date": "${START_DATE}",
@@ -76,6 +101,7 @@ jobs:
           EOF
           echo "Config file created at ~/.GarminDb/GarminConnectConfig.json"
           echo "Date range: ${START_DATE} to ${END_DATE}"
+          echo "Download days: ${DOWNLOAD_DAYS}, Activities: ${DOWNLOAD_ACTIVITIES}"
       
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -85,20 +111,31 @@ jobs:
       - name: Import Garmin data
         id: import_data
         run: |
-          # Download, import and analyze latest Garmin data
+          # Download, import and analyze Garmin data
           # Using wrapper to prevent TypeError when stats is None
-          # The wrapper also ensures config has proper defaults
-          echo "Starting Garmin data import..."
-          
-          if python garmindb_wrapper.py --download --import --analyze --latest; then
+          SYNC_MODE="${{ inputs.sync_mode || 'incremental' }}"
+          echo "Starting Garmin data import (mode: ${SYNC_MODE})..."
+
+          # Build command based on sync mode
+          if [ "$SYNC_MODE" == "full_refresh" ]; then
+            echo "🔄 Full refresh mode: downloading all historical data..."
+            CMD="python garmindb_wrapper.py --download --import --analyze"
+          else
+            echo "📥 Incremental mode: downloading latest data only..."
+            CMD="python garmindb_wrapper.py --download --import --analyze --latest"
+          fi
+
+          if $CMD; then
             echo "import_status=success" >> $GITHUB_OUTPUT
+            echo "sync_mode=${SYNC_MODE}" >> $GITHUB_OUTPUT
             echo "✅ Garmin data import completed successfully"
             exit 0
           else
             exit_code=$?
             # Check if database exists - if it does, we can still sync old data
-            if [ -f ~/.GarminDb/garmin.db ]; then
+            if [ -f ~/HealthData/DBs/garmin.db ]; then
               echo "import_status=no_new_data" >> $GITHUB_OUTPUT
+              echo "sync_mode=${SYNC_MODE}" >> $GITHUB_OUTPUT
               echo "⚠️ Garmin data import returned exit code $exit_code"
               echo "However, database exists from previous run. Will sync existing data."
               exit 0
@@ -115,14 +152,16 @@ jobs:
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           DATASET_ID: garmin_data
+          SYNC_MODE: ${{ steps.import_data.outputs.sync_mode }}
         run: |
-          if [ "${{ steps.import_data.outputs.import_status }}" == "no_new_data" ]; then
-            echo "ℹ️ No new data from Garmin, but syncing existing database to BigQuery..."
-            echo "This ensures BigQuery tables are created/updated even without new data."
+          echo "Sync mode: ${SYNC_MODE}"
+
+          if [ "${SYNC_MODE}" == "full_refresh" ]; then
+            echo "🔄 Full refresh: replacing all data in BigQuery..."
           else
-            echo "Syncing new data to BigQuery..."
+            echo "📥 Incremental: appending new data to BigQuery..."
           fi
-          
+
           if python sync_bq.py; then
             echo "✅ BigQuery sync completed successfully"
           else

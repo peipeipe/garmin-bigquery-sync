@@ -46,7 +46,16 @@ BigQuery: garmin_data.{daily_summary, activities, sleep}
 
 - **`garmindb_wrapper.py`**: GarminDB CLI のラッパーで、`stats`設定パラメータがNoneの場合のTypeErrorを防止。設定に必要なデフォルト値があることを保証し、必要に応じて`--all`フラグを追加。
 
-- **`.github/workflows/sync.yml`**: UTC午後9時に毎日実行されるGitHub Actionsワークフロー。実行間で`~/.GarminDb`と`~/.garth`をキャッシュ。Garminインポートが失敗した場合、キャッシュされたデータにフォールバック。
+- **`.github/workflows/sync.yml`**: UTC午後9時に毎日実行されるGitHub Actionsワークフロー。実行間で`~/.GarminDb`、`~/.garth`、`~/HealthData`をキャッシュ。Garminインポートが失敗した場合、キャッシュされたデータにフォールバック。
+
+### 同期モード
+
+ワークフローは2つのモードをサポート：
+
+- **incremental（デフォルト）**: 最新30日間のデータをダウンロードし、BigQueryに追加（append）
+- **full_refresh**: 過去2年間の全データをダウンロードし、BigQueryを置換（replace）
+
+手動実行時にGitHub Actionsの「Run workflow」から選択可能。
 
 ### 環境変数
 
@@ -54,6 +63,7 @@ BigQuery: garmin_data.{daily_summary, activities, sleep}
 GCP_PROJECT_ID      # 必須：Google Cloudプロジェクト ID
 DATASET_ID          # オプション：BigQueryデータセット名（デフォルト：garmin_data）
 DATASET_LOCATION    # オプション：BigQueryのロケーション（デフォルト：US）
+SYNC_MODE           # オプション：incremental または full_refresh（デフォルト：incremental）
 ```
 
 ### GitHub Actions シークレット
@@ -93,16 +103,28 @@ DATASET_LOCATION    # オプション：BigQueryのロケーション（デフ�
 }
 ```
 
+## データベース構造
+
+GarminDBは複数のSQLiteデータベースファイルを使用：
+
+- **garmin.db**: daily_summary, sleep, stress, weight, resting_hr
+- **garmin_activities.db**: activities
+
+データは `~/HealthData/DBs/` に保存される。
+
 ## BigQueryテーブルスキーマ
 
-`sync_bq.py`で事前定義されたスキーマを持つ3つのテーブル：
+`sync_bq.py`で事前定義されたスキーマを持つ6つのテーブル：
 - `daily_summary`: 31フィールド（日付、心拍数、歩数、カロリー、ストレス、SpO2など）
-- `activities`: 19フィールド（activity_id、名前、タイプ、タイミング、距離、心拍数など）
+- `activities`: 20フィールド（activity_id、名前、タイプ、タイミング、距離、心拍数など）
 - `sleep`: 11フィールド（日付、睡眠ステージ、SpO2、呼吸数、心拍数）
+- `stress`: 2フィールド（タイムスタンプ、ストレス値）
+- `weight`: 7フィールド（日付、体重、BMI、体脂肪率など）
+- `resting_hr`: 2フィールド（日付、安静時心拍数）
 
 ## 主な設計上の決定事項
 
-1. **追加モード**: 履歴データを保持するため、データは追加される（置き換えではない）
+1. **2つの同期モード**: incremental（追加）とfull_refresh（置換）をサポート
 2. **空テーブルの作成**: データが存在しない場合、スキーマ付きの空テーブルを作成
 3. **ラッパーパターン**: `garmindb_wrapper.py`は上流のGarminDBライブラリのTypeErrorを修正するために存在
 4. **グレースフルデグラデーション**: Garminインポートが失敗してもDBが存在する場合、ワークフローはキャッシュされたデータを同期

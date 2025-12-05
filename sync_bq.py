@@ -217,7 +217,7 @@ def check_table_exists(cursor, table_name):
     return cursor.fetchone() is not None
 
 
-def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client):
+def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, sync_mode='incremental'):
     """
     Read a table from SQLite and upload to BigQuery.
     Creates empty table if no data exists to allow users to see schema.
@@ -228,6 +228,7 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client):
         project_id: GCP project ID
         dataset_id: BigQuery dataset ID
         client: BigQuery client instance
+        sync_mode: 'incremental' (append) or 'full_refresh' (replace)
 
     Returns:
         int: Number of rows synced (0 if table is empty or doesn't exist)
@@ -280,17 +281,20 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client):
 
         print(f"  📊 Read {row_count} rows from {validated_table_name} ({db_file})")
 
-        # Upload to BigQuery using append mode
-        # This allows incremental updates and preserves historical data
+        # Determine write mode based on sync_mode
+        if_exists_mode = 'replace' if sync_mode == 'full_refresh' else 'append'
+        mode_label = '🔄 replacing' if sync_mode == 'full_refresh' else '📥 appending'
+
+        # Upload to BigQuery
         to_gbq(
             df,
             destination_table=destination_table,
             project_id=project_id,
-            if_exists='append',
+            if_exists=if_exists_mode,
             progress_bar=False
         )
 
-        print(f"  ✅ Uploaded {row_count} rows to {project_id}.{destination_table}")
+        print(f"  ✅ Uploaded {row_count} rows ({mode_label}) to {project_id}.{destination_table}")
 
         # Try to get job information for debugging
         try:
@@ -315,14 +319,24 @@ def main():
     # Get configuration from environment variables
     project_id = os.getenv('GCP_PROJECT_ID')
     dataset_id = os.getenv('DATASET_ID', 'garmin_data')
-    
+    sync_mode = os.getenv('SYNC_MODE', 'incremental')
+
     if not project_id:
         print("Error: GCP_PROJECT_ID environment variable is required")
         sys.exit(1)
-    
+
+    # Validate sync_mode
+    if sync_mode not in ('incremental', 'full_refresh'):
+        print(f"Warning: Invalid SYNC_MODE '{sync_mode}', defaulting to 'incremental'")
+        sync_mode = 'incremental'
+
+    mode_emoji = '🔄' if sync_mode == 'full_refresh' else '📥'
+    mode_desc = 'Full Refresh (replace)' if sync_mode == 'full_refresh' else 'Incremental (append)'
+
     print(f"🚀 Starting sync to BigQuery")
     print(f"   Project: {project_id}")
     print(f"   Dataset: {dataset_id}")
+    print(f"   {mode_emoji} Mode: {mode_desc}")
     print()
     
     # Initialize BigQuery client
@@ -374,7 +388,7 @@ def main():
 
     for table_name in tables_to_sync:
         try:
-            rows_synced = sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client)
+            rows_synced = sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, sync_mode)
             table_row_counts[table_name] = rows_synced
             total_rows += rows_synced
             success_count += 1
@@ -389,6 +403,7 @@ def main():
     print(f"=" * 60)
     print(f"Project: {project_id}")
     print(f"Dataset: {dataset_id}")
+    print(f"Mode: {mode_desc}")
     print()
     print(f"Table Row Counts:")
     for table_name, row_count in table_row_counts.items():
