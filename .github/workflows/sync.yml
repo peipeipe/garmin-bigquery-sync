@@ -56,21 +56,20 @@ jobs:
             "data": {
               "download_days": 3,
               "download_latest_activities": 10,
-              "download_all_activities": 100
+              "download_all_activities": 100,
+              "monitoring_start_date": "${START_DATE}",
+              "monitoring_end_date": "${END_DATE}",
+              "activities_start_date": "${START_DATE}",
+              "activities_end_date": "${END_DATE}",
+              "sleep_start_date": "${START_DATE}",
+              "sleep_end_date": "${END_DATE}",
+              "rhr_start_date": "${START_DATE}",
+              "rhr_end_date": "${END_DATE}",
+              "weight_start_date": "${START_DATE}",
+              "weight_end_date": "${END_DATE}"
             },
-            "stats": {
-              "monitoring": {
-                "start_date": "${START_DATE}",
-                "end_date": "${END_DATE}"
-              },
-              "activities": {
-                "start_date": "${START_DATE}",
-                "end_date": "${END_DATE}"
-              },
-              "sleep": {
-                "start_date": "${START_DATE}",
-                "end_date": "${END_DATE}"
-              }
+            "settings": {
+              "metric": true
             }
           }
           EOF

@@ -50,19 +50,41 @@ def ensure_config_exists():
     if 'data' not in config:
         config['data'] = {}
         config_needs_update = True
-    
+
     # Set defaults for fields that can cause None-related errors
     data_defaults = {
         'download_days': 3,  # Default to last 3 days
         'download_latest_activities': 10,  # Default to last 10 activities
         'download_all_activities': 100,  # Default to last 100 activities when not using --latest
     }
-    
+
     for key, default_value in data_defaults.items():
         if key not in config['data'] or config['data'][key] is None:
             config['data'][key] = default_value
             config_needs_update = True
             print(f"INFO: Setting default {key}={default_value}")
+
+    # Set date defaults for all stat types (required format: YYYY-MM-DD strings in 'data' section)
+    # GarminDB expects: data.monitoring_start_date, data.monitoring_end_date, etc.
+    from datetime import date, timedelta
+    today = date.today()
+    start_date = (today - timedelta(days=30)).isoformat()
+    end_date = today.isoformat()
+
+    stat_types = ['monitoring', 'activities', 'sleep', 'rhr', 'weight']
+    for stat_type in stat_types:
+        start_key = f'{stat_type}_start_date'
+        end_key = f'{stat_type}_end_date'
+
+        if start_key not in config['data'] or config['data'][start_key] is None:
+            config['data'][start_key] = start_date
+            config_needs_update = True
+            print(f"INFO: Setting default {start_key}={start_date}")
+
+        if end_key not in config['data'] or config['data'][end_key] is None:
+            config['data'][end_key] = end_date
+            config_needs_update = True
+            print(f"INFO: Setting default {end_key}={end_date}")
     
     # Save updated config if needed
     if config_needs_update:
