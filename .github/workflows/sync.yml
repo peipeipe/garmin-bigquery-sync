@@ -30,6 +30,7 @@ jobs:
           path: |
             ~/.GarminDb
             ~/.garth
+            ~/HealthData
           # Use date-based key to cache data for the day, allowing updates within the same day
           key: garmindb-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-${{ github.run_number }}
           restore-keys: |
