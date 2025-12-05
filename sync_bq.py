@@ -94,6 +94,23 @@ TABLE_SCHEMAS = {
         bigquery.SchemaField("avg_rr", "FLOAT"),
         bigquery.SchemaField("avg_hr", "FLOAT"),
     ],
+    'stress': [
+        bigquery.SchemaField("timestamp", "TIMESTAMP"),
+        bigquery.SchemaField("stress", "INTEGER"),
+    ],
+    'weight': [
+        bigquery.SchemaField("day", "DATE"),
+        bigquery.SchemaField("weight", "FLOAT"),
+        bigquery.SchemaField("bmi", "FLOAT"),
+        bigquery.SchemaField("body_fat", "FLOAT"),
+        bigquery.SchemaField("body_water", "FLOAT"),
+        bigquery.SchemaField("bone_mass", "FLOAT"),
+        bigquery.SchemaField("muscle_mass", "FLOAT"),
+    ],
+    'resting_hr': [
+        bigquery.SchemaField("day", "DATE"),
+        bigquery.SchemaField("resting_hr", "INTEGER"),
+    ],
 }
 
 
@@ -126,40 +143,34 @@ def ensure_dataset_exists(client, project_id, dataset_id, location=None):
         raise
 
 
-def get_db_path():
+def get_db_dir():
     """
-    Get the path to the GarminDB SQLite database.
+    Get the directory containing GarminDB SQLite databases.
 
-    GarminDB stores the database in ~/HealthData/DBs/garmin.db by default.
+    GarminDB stores databases in ~/HealthData/DBs/ by default.
 
     Returns:
-        str: Path to the database file
+        Path: Path to the database directory
 
     Raises:
-        FileNotFoundError: If the database doesn't exist with helpful error message
+        FileNotFoundError: If the database directory doesn't exist
     """
     home = Path.home()
 
-    # GarminDB default location: ~/HealthData/DBs/garmin.db
-    primary_db_path = home / 'HealthData' / 'DBs' / 'garmin.db'
-
-    # Alternative locations to check
-    alternative_paths = [
-        home / 'HealthData' / 'DBs' / 'garmin.db',
-        home / '.GarminDb' / 'garmin.db',
-        home / 'HealthData' / 'garmin.db',
+    # Possible database directory locations
+    possible_dirs = [
+        home / 'HealthData' / 'DBs',
+        home / '.GarminDb',
     ]
 
-    # Check each possible location
-    for db_path in alternative_paths:
-        if db_path.exists():
-            print(f"  ℹ️  Found database at: {db_path}")
-            return str(db_path)
+    for db_dir in possible_dirs:
+        if db_dir.exists() and db_dir.is_dir():
+            return db_dir
 
-    # Database not found - provide helpful error
-    checked_paths = '\n'.join(f"    - {p}" for p in alternative_paths)
+    # Directory not found - provide helpful error
+    checked_paths = '\n'.join(f"    - {p}" for p in possible_dirs)
     raise FileNotFoundError(
-        f"GarminDB database not found. Checked locations:\n{checked_paths}\n\n"
+        f"GarminDB database directory not found. Checked locations:\n{checked_paths}\n\n"
         "This may be because:\n"
         "  1. This is the first run and data import hasn't completed\n"
         "  2. The import step failed (check workflow logs)\n"
@@ -167,6 +178,24 @@ def get_db_path():
         "\n"
         "To create the database, run: python garmindb_wrapper.py --download --import --analyze --latest --all"
     )
+
+
+# Mapping of tables to their database files
+# GarminDB uses multiple database files for different data types
+TABLE_TO_DB = {
+    # garmin.db - main health data
+    'daily_summary': 'garmin.db',
+    'sleep': 'garmin.db',
+    'sleep_events': 'garmin.db',
+    'stress': 'garmin.db',
+    'resting_hr': 'garmin.db',
+    'weight': 'garmin.db',
+    # garmin_activities.db - activity data
+    'activities': 'garmin_activities.db',
+    'activity_laps': 'garmin_activities.db',
+    'activity_records': 'garmin_activities.db',
+    'steps_activities': 'garmin_activities.db',
+}
 
 
 def validate_table_name(table_name):
@@ -188,40 +217,50 @@ def check_table_exists(cursor, table_name):
     return cursor.fetchone() is not None
 
 
-def sync_table_to_bigquery(conn, table_name, project_id, dataset_id, client):
+def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client):
     """
     Read a table from SQLite and upload to BigQuery.
     Creates empty table if no data exists to allow users to see schema.
-    
+
     Args:
-        conn: SQLite connection object
+        db_dir: Path to the database directory
         table_name: Name of the table to sync
         project_id: GCP project ID
         dataset_id: BigQuery dataset ID
         client: BigQuery client instance
-        
+
     Returns:
         int: Number of rows synced (0 if table is empty or doesn't exist)
     """
     print(f"Processing table: {table_name}")
-    
+
     # Validate table name to prevent SQL injection
     validated_table_name = validate_table_name(table_name)
-    
-    cursor = conn.cursor()
-    if not check_table_exists(cursor, validated_table_name):
-        print(f"  ⚠️  Table '{validated_table_name}' not found in SQLite database. Skipping.")
+
+    # Get the database file for this table
+    db_file = TABLE_TO_DB.get(validated_table_name, 'garmin.db')
+    db_path = db_dir / db_file
+
+    if not db_path.exists():
+        print(f"  ⚠️  Database file '{db_file}' not found. Skipping table '{validated_table_name}'.")
         return 0
-    
-    # Read table from SQLite - use parameterized query via pandas
+
+    # Connect to the appropriate database
+    conn = sqlite3.connect(str(db_path))
+
     try:
-        # Using pandas read_sql_query with table name validation above
+        cursor = conn.cursor()
+        if not check_table_exists(cursor, validated_table_name):
+            print(f"  ⚠️  Table '{validated_table_name}' not found in {db_file}. Skipping.")
+            return 0
+
+        # Read table from SQLite - use parameterized query via pandas
         # The table name has been validated to contain only safe characters
         df = pd.read_sql_query(f"SELECT * FROM {validated_table_name}", conn)
-        
+
         destination_table = f"{dataset_id}.{validated_table_name}"
         row_count = len(df)
-        
+
         if df.empty:
             print(f"  ⚠️  Table '{validated_table_name}' is empty in SQLite")
             # Create empty table in BigQuery with schema if available
@@ -238,40 +277,37 @@ def sync_table_to_bigquery(conn, table_name, project_id, dataset_id, client):
             else:
                 print(f"  ℹ️  No predefined schema available for {validated_table_name}, skipping empty table creation")
             return 0
-        
-        print(f"  📊 Read {row_count} rows from {validated_table_name}")
-        
+
+        print(f"  📊 Read {row_count} rows from {validated_table_name} ({db_file})")
+
         # Upload to BigQuery using append mode
         # This allows incremental updates and preserves historical data
+        to_gbq(
+            df,
+            destination_table=destination_table,
+            project_id=project_id,
+            if_exists='append',
+            progress_bar=False
+        )
+
+        print(f"  ✅ Uploaded {row_count} rows to {project_id}.{destination_table}")
+
+        # Try to get job information for debugging
         try:
-            to_gbq(
-                df,
-                destination_table=destination_table,
-                project_id=project_id,
-                if_exists='append',
-                progress_bar=False
-            )
-            
-            print(f"  ✅ Uploaded {row_count} rows to {project_id}.{destination_table}")
-            
-            # Try to get job information for debugging
-            try:
-                table_ref = f"{project_id}.{destination_table}"
-                table = client.get_table(table_ref)
-                print(f"  ℹ️  Table now has {table.num_rows} total rows")
-            except Exception:
-                # Don't fail if we can't get table info
-                pass
-                
-            return row_count
-            
-        except Exception as e:
-            print(f"  ❌ Error uploading to BigQuery for table '{table_name}': {type(e).__name__}: {e}")
-            raise
-        
+            table_ref = f"{project_id}.{destination_table}"
+            table = client.get_table(table_ref)
+            print(f"  ℹ️  Table now has {table.num_rows} total rows")
+        except Exception:
+            # Don't fail if we can't get table info
+            pass
+
+        return row_count
+
     except Exception as e:
-        print(f"  ❌ Error syncing table '{table_name}' at reading stage: {type(e).__name__}: {e}")
+        print(f"  ❌ Error syncing table '{table_name}': {type(e).__name__}: {e}")
         raise
+    finally:
+        conn.close()
 
 
 def main():
@@ -303,35 +339,42 @@ def main():
     except Exception as e:
         print(f"❌ Failed to ensure dataset exists: {e}")
         sys.exit(1)
-    
-    # Connect to SQLite database
+
+    # Find database directory
     try:
-        db_path = get_db_path()
-        print(f"📂 Connecting to database: {db_path}")
-        conn = sqlite3.connect(db_path)
+        db_dir = get_db_dir()
+        print(f"📂 Database directory: {db_dir}")
+
+        # List available database files
+        db_files = list(db_dir.glob('*.db'))
+        print(f"  ℹ️  Found {len(db_files)} database file(s): {', '.join(f.name for f in db_files)}")
     except Exception as e:
-        print(f"❌ Failed to connect to database: {type(e).__name__}: {e}")
+        print(f"❌ Failed to find database directory: {type(e).__name__}: {e}")
         sys.exit(1)
-    
+
     # Tables to sync (add more as needed)
+    # Tables are mapped to their respective database files in TABLE_TO_DB
     tables_to_sync = [
         'daily_summary',
         'activities',
-        'sleep'
+        'sleep',
+        'stress',
+        'weight',
+        'resting_hr',
     ]
-    
+
     print(f"📋 Tables to sync: {', '.join(tables_to_sync)}")
     print()
-    
+
     # Sync each table and track statistics
     success_count = 0
     failed_count = 0
     total_rows = 0
     table_row_counts = {}
-    
+
     for table_name in tables_to_sync:
         try:
-            rows_synced = sync_table_to_bigquery(conn, table_name, project_id, dataset_id, client)
+            rows_synced = sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client)
             table_row_counts[table_name] = rows_synced
             total_rows += rows_synced
             success_count += 1
@@ -339,8 +382,6 @@ def main():
             print(f"Failed to sync {table_name}: {type(e).__name__}: {e}")
             table_row_counts[table_name] = 0
             failed_count += 1
-    
-    conn.close()
     
     print()
     print(f"=" * 60)
