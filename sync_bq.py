@@ -192,20 +192,13 @@ def get_db_dir():
 
 
 # Mapping of tables to their database files
-# GarminDB uses multiple database files for different data types
 TABLE_TO_DB = {
-    # garmin.db - main health data
     'daily_summary': 'garmin.db',
     'sleep': 'garmin.db',
-    'sleep_events': 'garmin.db',
     'stress': 'garmin.db',
     'resting_hr': 'garmin.db',
     'weight': 'garmin.db',
-    # garmin_activities.db - activity data
     'activities': 'garmin_activities.db',
-    'activity_laps': 'garmin_activities.db',
-    'activity_records': 'garmin_activities.db',
-    'steps_activities': 'garmin_activities.db',
 }
 
 
