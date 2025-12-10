@@ -22,6 +22,17 @@ from google.cloud import bigquery
 from google.api_core import exceptions as google_exceptions
 
 
+# Primary keys for each table (used for MERGE/upsert operations)
+TABLE_PRIMARY_KEYS = {
+    'daily_summary': ['day'],
+    'activities': ['activity_id'],
+    'sleep': ['day'],
+    'stress': ['timestamp'],
+    'weight': ['day'],
+    'resting_hr': ['day'],
+}
+
+
 # Schema definitions for common GarminDB tables
 # Used to create empty tables when no data exists yet
 TABLE_SCHEMAS = {
@@ -217,6 +228,94 @@ def check_table_exists(cursor, table_name):
     return cursor.fetchone() is not None
 
 
+def merge_to_bigquery(df, table_name, project_id, dataset_id, client):
+    """
+    Merge (upsert) data into BigQuery using a staging table.
+
+    This prevents duplicates by:
+    1. Uploading data to a temporary staging table
+    2. Using MERGE SQL to update existing rows and insert new ones
+    3. Deleting the staging table
+
+    Args:
+        df: pandas DataFrame with data to merge
+        table_name: Name of the target table
+        project_id: GCP project ID
+        dataset_id: BigQuery dataset ID
+        client: BigQuery client instance
+
+    Returns:
+        tuple: (rows_inserted, rows_updated)
+    """
+    staging_table = f"{dataset_id}.{table_name}_staging"
+    target_table = f"{dataset_id}.{table_name}"
+    full_staging = f"{project_id}.{staging_table}"
+    full_target = f"{project_id}.{target_table}"
+
+    # Get primary keys for this table
+    primary_keys = TABLE_PRIMARY_KEYS.get(table_name, ['day'])
+
+    try:
+        # Step 1: Upload to staging table (replace if exists)
+        to_gbq(
+            df,
+            destination_table=staging_table,
+            project_id=project_id,
+            if_exists='replace',
+            progress_bar=False
+        )
+        print(f"  📤 Uploaded {len(df)} rows to staging table")
+
+        # Step 2: Build MERGE SQL
+        # Get all columns from the DataFrame
+        columns = df.columns.tolist()
+
+        # Build ON clause for primary keys
+        on_conditions = " AND ".join([f"T.{pk} = S.{pk}" for pk in primary_keys])
+
+        # Build UPDATE SET clause (all columns except primary keys)
+        update_columns = [col for col in columns if col not in primary_keys]
+        if update_columns:
+            update_set = ", ".join([f"T.{col} = S.{col}" for col in update_columns])
+        else:
+            # If only primary key columns, just set them (edge case)
+            update_set = ", ".join([f"T.{col} = S.{col}" for col in columns])
+
+        # Build INSERT columns and values
+        insert_columns = ", ".join(columns)
+        insert_values = ", ".join([f"S.{col}" for col in columns])
+
+        merge_sql = f"""
+        MERGE `{full_target}` T
+        USING `{full_staging}` S
+        ON {on_conditions}
+        WHEN MATCHED THEN
+            UPDATE SET {update_set}
+        WHEN NOT MATCHED THEN
+            INSERT ({insert_columns})
+            VALUES ({insert_values})
+        """
+
+        # Step 3: Execute MERGE
+        job = client.query(merge_sql)
+        result = job.result()  # Wait for completion
+
+        # Get statistics
+        rows_affected = job.num_dml_affected_rows if job.num_dml_affected_rows else 0
+
+        print(f"  🔀 MERGE completed: {rows_affected} rows affected")
+
+        return rows_affected
+
+    finally:
+        # Step 4: Clean up staging table
+        try:
+            client.delete_table(full_staging, not_found_ok=True)
+            print(f"  🗑️  Staging table cleaned up")
+        except Exception as e:
+            print(f"  ⚠️  Failed to delete staging table: {e}")
+
+
 def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, sync_mode='incremental'):
     """
     Read a table from SQLite and upload to BigQuery.
@@ -281,20 +380,38 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, s
 
         print(f"  📊 Read {row_count} rows from {validated_table_name} ({db_file})")
 
-        # Determine write mode based on sync_mode
-        if_exists_mode = 'replace' if sync_mode == 'full_refresh' else 'append'
-        mode_label = '🔄 replacing' if sync_mode == 'full_refresh' else '📥 appending'
+        if sync_mode == 'full_refresh':
+            # Full refresh: replace entire table
+            to_gbq(
+                df,
+                destination_table=destination_table,
+                project_id=project_id,
+                if_exists='replace',
+                progress_bar=False
+            )
+            print(f"  ✅ Uploaded {row_count} rows (🔄 replacing) to {project_id}.{destination_table}")
+        else:
+            # Incremental: use MERGE to prevent duplicates
+            # First ensure target table exists
+            try:
+                table_ref = f"{project_id}.{destination_table}"
+                client.get_table(table_ref)
+            except google_exceptions.NotFound:
+                # Table doesn't exist, create it first with initial data
+                print(f"  📋 Target table doesn't exist, creating with initial data...")
+                to_gbq(
+                    df,
+                    destination_table=destination_table,
+                    project_id=project_id,
+                    if_exists='replace',
+                    progress_bar=False
+                )
+                print(f"  ✅ Created table with {row_count} rows at {project_id}.{destination_table}")
+                return row_count
 
-        # Upload to BigQuery
-        to_gbq(
-            df,
-            destination_table=destination_table,
-            project_id=project_id,
-            if_exists=if_exists_mode,
-            progress_bar=False
-        )
-
-        print(f"  ✅ Uploaded {row_count} rows ({mode_label}) to {project_id}.{destination_table}")
+            # Table exists, use MERGE
+            rows_affected = merge_to_bigquery(df, validated_table_name, project_id, dataset_id, client)
+            print(f"  ✅ MERGE completed for {project_id}.{destination_table}")
 
         # Try to get job information for debugging
         try:

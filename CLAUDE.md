@@ -42,7 +42,7 @@ BigQuery: garmin_data.{daily_summary, activities, sleep}
 
 ### 主要モジュール
 
-- **`sync_bq.py`**: メイン同期エンジン。BigQueryのデータセット/テーブルを作成し、SQLiteから読み取り、追加モードでアップロード（履歴データを保持）。データが存在しない場合は、事前定義されたスキーマで空のテーブルを作成。
+- **`sync_bq.py`**: メイン同期エンジン。BigQueryのデータセット/テーブルを作成し、SQLiteから読み取り、MERGE（upsert）でアップロード（重複を防止）。データが存在しない場合は、事前定義されたスキーマで空のテーブルを作成。
 
 - **`garmindb_wrapper.py`**: GarminDB CLI のラッパーで、`stats`設定パラメータがNoneの場合のTypeErrorを防止。設定に必要なデフォルト値があることを保証し、必要に応じて`--all`フラグを追加。
 
@@ -52,8 +52,8 @@ BigQuery: garmin_data.{daily_summary, activities, sleep}
 
 ワークフローは2つのモードをサポート：
 
-- **incremental（デフォルト）**: 最新30日間のデータをダウンロードし、BigQueryに追加（append）
-- **full_refresh**: 過去2年間の全データをダウンロードし、BigQueryを置換（replace）
+- **incremental（デフォルト）**: 最新30日間のデータをダウンロードし、MERGE（upsert）でBigQueryに同期。主キーで既存レコードを更新、新規のみ追加（重複防止）
+- **full_refresh**: 2015年1月1日からの全データをダウンロードし、BigQueryを置換（replace）
 
 手動実行時にGitHub Actionsの「Run workflow」から選択可能。
 

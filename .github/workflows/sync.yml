@@ -61,10 +61,11 @@ jobs:
 
           # Calculate date range based on sync mode
           if [ "$SYNC_MODE" == "full_refresh" ]; then
-            # Full refresh: get data from 2 years ago
-            START_DATE=$(date -d "2 years ago" +%Y-%m-%d)
-            DOWNLOAD_DAYS=730
-            DOWNLOAD_ACTIVITIES=1000
+            # Full refresh: get ALL data from 2015-01-01
+            START_DATE="2015-01-01"
+            # Calculate days from 2015-01-01 to today
+            DOWNLOAD_DAYS=$(( ($(date +%s) - $(date -d "2015-01-01" +%s)) / 86400 ))
+            DOWNLOAD_ACTIVITIES=10000
           else
             # Incremental: get last 30 days
             START_DATE=$(date -d "30 days ago" +%Y-%m-%d)
@@ -159,7 +160,7 @@ jobs:
           if [ "${SYNC_MODE}" == "full_refresh" ]; then
             echo "🔄 Full refresh: replacing all data in BigQuery..."
           else
-            echo "📥 Incremental: appending new data to BigQuery..."
+            echo "🔀 Incremental: using MERGE (upsert) to prevent duplicates..."
           fi
 
           if python sync_bq.py; then
