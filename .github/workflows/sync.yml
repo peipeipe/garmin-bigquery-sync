@@ -27,6 +27,11 @@ on:
         required: false
         default: ''
         type: string
+      replace_tables:
+        description: 'Replace tables instead of MERGE (use for first year_range run)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   sync:
@@ -183,14 +188,21 @@ jobs:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           DATASET_ID: garmin_data
           SYNC_MODE: ${{ steps.import_data.outputs.sync_mode }}
+          REPLACE_TABLES: ${{ inputs.replace_tables }}
         run: |
           echo "Sync mode: ${SYNC_MODE}"
+          echo "Replace tables: ${REPLACE_TABLES}"
 
           if [ "${SYNC_MODE}" == "full_refresh" ]; then
             echo "🔄 Full refresh: replacing all data in BigQuery..."
           elif [ "${SYNC_MODE}" == "year_range" ]; then
-            echo "📅 Year range: using MERGE to add historical data..."
-            export SYNC_MODE="incremental"  # Use MERGE for year_range
+            if [ "${REPLACE_TABLES}" == "true" ]; then
+              echo "📅 Year range with REPLACE: clearing tables and inserting data..."
+              export SYNC_MODE="full_refresh"
+            else
+              echo "📅 Year range: using MERGE to add historical data..."
+              export SYNC_MODE="incremental"
+            fi
           else
             echo "🔀 Incremental: using MERGE (upsert) to prevent duplicates..."
           fi
