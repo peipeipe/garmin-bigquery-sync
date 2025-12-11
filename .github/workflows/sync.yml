@@ -2,8 +2,9 @@ name: Sync Garmin Data to BigQuery
 
 on:
   # Run daily at 9 PM UTC (incremental update)
-  schedule:
-    - cron: '0 21 * * *'
+  # TEMPORARILY DISABLED - re-enable after year_range sync completes
+  # schedule:
+  #   - cron: '0 21 * * *'
 
   # Allow manual trigger with options
   workflow_dispatch:
