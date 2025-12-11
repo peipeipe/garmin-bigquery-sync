@@ -16,6 +16,17 @@ on:
         options:
           - incremental
           - full_refresh
+          - year_range
+      start_year:
+        description: 'Start year (for year_range mode, e.g., 2015)'
+        required: false
+        default: ''
+        type: string
+      end_year:
+        description: 'End year (for year_range mode, e.g., 2017)'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   sync:
@@ -60,10 +71,24 @@ jobs:
           echo "Sync mode: ${SYNC_MODE}"
 
           # Calculate date range based on sync mode
-          if [ "$SYNC_MODE" == "full_refresh" ]; then
+          if [ "$SYNC_MODE" == "year_range" ]; then
+            # Year range mode: sync specific years
+            START_YEAR="${{ inputs.start_year }}"
+            END_YEAR="${{ inputs.end_year }}"
+
+            if [ -z "$START_YEAR" ] || [ -z "$END_YEAR" ]; then
+              echo "❌ Error: start_year and end_year are required for year_range mode"
+              exit 1
+            fi
+
+            START_DATE="${START_YEAR}-01-01"
+            END_DATE="${END_YEAR}-12-31"
+            DOWNLOAD_DAYS=$(( ($(date -d "$END_DATE" +%s) - $(date -d "$START_DATE" +%s)) / 86400 ))
+            DOWNLOAD_ACTIVITIES=5000
+            echo "📅 Year range mode: ${START_YEAR} to ${END_YEAR}"
+          elif [ "$SYNC_MODE" == "full_refresh" ]; then
             # Full refresh: get ALL data from 2015-01-01
             START_DATE="2015-01-01"
-            # Calculate days from 2015-01-01 to today
             DOWNLOAD_DAYS=$(( ($(date +%s) - $(date -d "2015-01-01" +%s)) / 86400 ))
             DOWNLOAD_ACTIVITIES=10000
           else
@@ -72,7 +97,11 @@ jobs:
             DOWNLOAD_DAYS=30
             DOWNLOAD_ACTIVITIES=50
           fi
-          END_DATE=$(date +%Y-%m-%d)
+
+          # Set END_DATE if not already set
+          if [ -z "$END_DATE" ]; then
+            END_DATE=$(date +%Y-%m-%d)
+          fi
 
           cat > ~/.GarminDb/GarminConnectConfig.json << EOF
           {
@@ -118,8 +147,8 @@ jobs:
           echo "Starting Garmin data import (mode: ${SYNC_MODE})..."
 
           # Build command based on sync mode
-          if [ "$SYNC_MODE" == "full_refresh" ]; then
-            echo "🔄 Full refresh mode: downloading all historical data..."
+          if [ "$SYNC_MODE" == "full_refresh" ] || [ "$SYNC_MODE" == "year_range" ]; then
+            echo "🔄 Full/Year-range mode: downloading historical data..."
             CMD="python garmindb_wrapper.py --download --import --analyze"
           else
             echo "📥 Incremental mode: downloading latest data only..."
@@ -159,6 +188,9 @@ jobs:
 
           if [ "${SYNC_MODE}" == "full_refresh" ]; then
             echo "🔄 Full refresh: replacing all data in BigQuery..."
+          elif [ "${SYNC_MODE}" == "year_range" ]; then
+            echo "📅 Year range: using MERGE to add historical data..."
+            export SYNC_MODE="incremental"  # Use MERGE for year_range
           else
             echo "🔀 Incremental: using MERGE (upsert) to prevent duplicates..."
           fi
