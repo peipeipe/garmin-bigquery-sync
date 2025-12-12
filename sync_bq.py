@@ -263,20 +263,20 @@ def merge_to_bigquery(df, table_name, project_id, dataset_id, client):
         # Get all columns from the DataFrame
         columns = df.columns.tolist()
 
-        # Build ON clause for primary keys
-        on_conditions = " AND ".join([f"T.{pk} = S.{pk}" for pk in primary_keys])
+        # Build ON clause for primary keys (backtick-escape column names for reserved words)
+        on_conditions = " AND ".join([f"T.`{pk}` = S.`{pk}`" for pk in primary_keys])
 
         # Build UPDATE SET clause (all columns except primary keys)
         update_columns = [col for col in columns if col not in primary_keys]
         if update_columns:
-            update_set = ", ".join([f"T.{col} = S.{col}" for col in update_columns])
+            update_set = ", ".join([f"T.`{col}` = S.`{col}`" for col in update_columns])
         else:
             # If only primary key columns, just set them (edge case)
-            update_set = ", ".join([f"T.{col} = S.{col}" for col in columns])
+            update_set = ", ".join([f"T.`{col}` = S.`{col}`" for col in columns])
 
-        # Build INSERT columns and values
-        insert_columns = ", ".join(columns)
-        insert_values = ", ".join([f"S.{col}" for col in columns])
+        # Build INSERT columns and values (backtick-escape for reserved words like 'end', 'start')
+        insert_columns = ", ".join([f"`{col}`" for col in columns])
+        insert_values = ", ".join([f"S.`{col}`" for col in columns])
 
         merge_sql = f"""
         MERGE `{full_target}` T
