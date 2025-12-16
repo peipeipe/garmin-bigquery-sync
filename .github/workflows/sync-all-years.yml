@@ -31,24 +31,47 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check if sync is running
-        id: running
+      - name: Check sync status
+        id: check
         uses: actions/github-script@v7
         with:
           script: |
+            // Get recent workflow runs for sync.yml
             const runs = await github.rest.actions.listWorkflowRuns({
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'sync.yml',
-              status: 'in_progress',
               per_page: 5
             });
-            const isRunning = runs.data.total_count > 0;
-            console.log(`Sync running: ${isRunning}`);
-            core.setOutput('is_running', isRunning);
+
+            // Check if any sync is currently running
+            const runningSync = runs.data.workflow_runs.find(r =>
+              r.status === 'in_progress' || r.status === 'queued'
+            );
+
+            if (runningSync) {
+              console.log('A sync is currently running, skipping...');
+              core.setOutput('action', 'skip');
+              core.setOutput('reason', 'sync_running');
+              return;
+            }
+
+            // Check the most recent completed run
+            const lastRun = runs.data.workflow_runs.find(r => r.status === 'completed');
+
+            if (lastRun && lastRun.conclusion === 'failure') {
+              console.log('Last sync failed! Not proceeding to next batch.');
+              console.log(`Failed run: ${lastRun.html_url}`);
+              core.setOutput('action', 'skip');
+              core.setOutput('reason', 'last_failed');
+              return;
+            }
+
+            core.setOutput('action', 'proceed');
+            core.setOutput('reason', 'ok');
 
       - name: Read current batch
-        if: steps.running.outputs.is_running == 'false'
+        if: steps.check.outputs.action == 'proceed'
         id: state
         run: |
           if [ -f .github/sync-batch-state.txt ]; then
@@ -72,7 +95,7 @@ jobs:
           echo "Current batch state: $BATCH"
 
       - name: Run batch 1 (2015-2017)
-        if: steps.running.outputs.is_running == 'false' && steps.state.outputs.current_batch == '0'
+        if: steps.check.outputs.action == 'proceed' && steps.state.outputs.current_batch == '0'
         uses: actions/github-script@v7
         with:
           script: |
@@ -91,7 +114,7 @@ jobs:
             console.log('✅ Triggered 2015-2017 sync (replace=true)');
 
       - name: Run batch 2 (2018-2020)
-        if: steps.running.outputs.is_running == 'false' && steps.state.outputs.current_batch == '1'
+        if: steps.check.outputs.action == 'proceed' && steps.state.outputs.current_batch == '1'
         uses: actions/github-script@v7
         with:
           script: |
@@ -110,7 +133,7 @@ jobs:
             console.log('✅ Triggered 2018-2020 sync');
 
       - name: Run batch 3 (2021-2023)
-        if: steps.running.outputs.is_running == 'false' && steps.state.outputs.current_batch == '2'
+        if: steps.check.outputs.action == 'proceed' && steps.state.outputs.current_batch == '2'
         uses: actions/github-script@v7
         with:
           script: |
@@ -129,7 +152,7 @@ jobs:
             console.log('✅ Triggered 2021-2023 sync');
 
       - name: Run batch 4 (2024-2025)
-        if: steps.running.outputs.is_running == 'false' && steps.state.outputs.current_batch == '3'
+        if: steps.check.outputs.action == 'proceed' && steps.state.outputs.current_batch == '3'
         uses: actions/github-script@v7
         with:
           script: |
@@ -148,7 +171,7 @@ jobs:
             console.log('✅ Triggered 2024-2025 sync');
 
       - name: Update batch state
-        if: steps.running.outputs.is_running == 'false' && steps.state.outputs.current_batch != '4'
+        if: steps.check.outputs.action == 'proceed' && steps.state.outputs.current_batch != '4'
         run: |
           CURRENT=${{ steps.state.outputs.current_batch }}
           NEXT=$((CURRENT + 1))
@@ -161,7 +184,18 @@ jobs:
           git push || echo "Push failed, will retry next run"
 
       - name: All done
-        if: steps.state.outputs.current_batch == '4'
+        if: steps.check.outputs.action == 'proceed' && steps.state.outputs.current_batch == '4'
         run: |
           echo "🎉 All batches complete!"
           echo "You can now re-enable the daily schedule in sync.yml"
+
+      - name: Status report
+        run: |
+          echo "================================"
+          echo "Action: ${{ steps.check.outputs.action }}"
+          echo "Reason: ${{ steps.check.outputs.reason }}"
+          echo "Current batch: ${{ steps.state.outputs.current_batch || 'N/A' }}"
+          echo "================================"
+          if [ "${{ steps.check.outputs.reason }}" == "last_failed" ]; then
+            echo "⚠️  Last sync failed. Fix the issue and re-run manually."
+          fi
