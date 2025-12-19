@@ -309,6 +309,22 @@ def merge_to_bigquery(df, table_name, project_id, dataset_id, client):
             print(f"  ⚠️  Failed to delete staging table: {e}")
 
 
+def get_table_schema_for_gbq(table_name):
+    """
+    Convert BigQuery SchemaField objects to pandas-gbq table_schema format.
+
+    Args:
+        table_name: Name of the table
+
+    Returns:
+        list: Schema in pandas-gbq format [{'name': 'col', 'type': 'TYPE'}, ...] or None
+    """
+    if table_name not in TABLE_SCHEMAS:
+        return None
+
+    return [{'name': field.name, 'type': field.field_type} for field in TABLE_SCHEMAS[table_name]]
+
+
 def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, sync_mode='incremental'):
     """
     Read a table from SQLite and upload to BigQuery.
@@ -374,13 +390,16 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, s
         print(f"  📊 Read {row_count} rows from {validated_table_name} ({db_file})")
 
         if sync_mode == 'full_refresh':
-            # Full refresh: replace entire table
+            # Full refresh: replace entire table with explicit schema
+            # Use predefined schema to ensure correct types (prevents NULL columns becoming STRING)
+            table_schema = get_table_schema_for_gbq(validated_table_name)
             to_gbq(
                 df,
                 destination_table=destination_table,
                 project_id=project_id,
                 if_exists='replace',
-                progress_bar=False
+                progress_bar=False,
+                table_schema=table_schema
             )
             print(f"  ✅ Uploaded {row_count} rows (🔄 replacing) to {project_id}.{destination_table}")
         else:
@@ -390,14 +409,16 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, s
                 table_ref = f"{project_id}.{destination_table}"
                 client.get_table(table_ref)
             except google_exceptions.NotFound:
-                # Table doesn't exist, create it first with initial data
+                # Table doesn't exist, create it first with initial data and explicit schema
                 print(f"  📋 Target table doesn't exist, creating with initial data...")
+                table_schema = get_table_schema_for_gbq(validated_table_name)
                 to_gbq(
                     df,
                     destination_table=destination_table,
                     project_id=project_id,
                     if_exists='replace',
-                    progress_bar=False
+                    progress_bar=False,
+                    table_schema=table_schema
                 )
                 print(f"  ✅ Created table with {row_count} rows at {project_id}.{destination_table}")
                 return row_count
