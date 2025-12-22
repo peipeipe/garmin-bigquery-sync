@@ -325,6 +325,34 @@ def get_table_schema_for_gbq(table_name):
     return [{'name': field.name, 'type': field.field_type} for field in TABLE_SCHEMAS[table_name]]
 
 
+def convert_datetime_columns(df, table_name):
+    """
+    Convert datetime columns to pandas datetime type based on TABLE_SCHEMAS.
+
+    This is necessary because SQLite stores datetimes as strings, and pyarrow
+    needs proper datetime types when using explicit schemas.
+
+    Args:
+        df: pandas DataFrame
+        table_name: Name of the table (to look up schema)
+
+    Returns:
+        DataFrame with converted datetime columns
+    """
+    if table_name not in TABLE_SCHEMAS:
+        return df
+
+    # Find TIMESTAMP and DATE columns from schema
+    for field in TABLE_SCHEMAS[table_name]:
+        if field.name in df.columns:
+            if field.field_type == 'TIMESTAMP':
+                df[field.name] = pd.to_datetime(df[field.name], errors='coerce')
+            elif field.field_type == 'DATE':
+                df[field.name] = pd.to_datetime(df[field.name], errors='coerce').dt.date
+
+    return df
+
+
 def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, sync_mode='incremental'):
     """
     Read a table from SQLite and upload to BigQuery.
@@ -366,6 +394,9 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, s
         # Read table from SQLite - use parameterized query via pandas
         # The table name has been validated to contain only safe characters
         df = pd.read_sql_query(f"SELECT * FROM {validated_table_name}", conn)
+
+        # Convert datetime columns to proper pandas types for pyarrow compatibility
+        df = convert_datetime_columns(df, validated_table_name)
 
         destination_table = f"{dataset_id}.{validated_table_name}"
         row_count = len(df)
