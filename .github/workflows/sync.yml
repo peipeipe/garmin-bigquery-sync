@@ -2,9 +2,8 @@ name: Sync Garmin Data to BigQuery
 
 on:
   # Run daily at 9 PM UTC (incremental update)
-  # TEMPORARILY DISABLED - re-enable after year_range sync completes
-  # schedule:
-  #   - cron: '0 21 * * *'
+  schedule:
+    - cron: '0 21 * * *'
 
   # Allow manual trigger with options
   workflow_dispatch:
@@ -182,13 +181,6 @@ jobs:
             fi
           fi
       
-      - name: Delete existing tables (temporary - remove after fix)
-        if: (steps.import_data.outputs.import_status == 'success' || steps.import_data.outputs.import_status == 'no_new_data') && inputs.replace_tables == true
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          DATASET_ID: garmin_data
-        run: python delete_tables.py
-
       - name: Sync to BigQuery
         # Run if import was successful OR if import had no new data but database exists
         if: steps.import_data.outputs.import_status == 'success' || steps.import_data.outputs.import_status == 'no_new_data'
@@ -197,7 +189,6 @@ jobs:
           DATASET_ID: garmin_data
           SYNC_MODE: ${{ steps.import_data.outputs.sync_mode }}
           REPLACE_TABLES: ${{ inputs.replace_tables }}
-          DEBUG_SCHEMA: "1"
         run: |
           echo "Sync mode: ${SYNC_MODE}"
           echo "Replace tables: ${REPLACE_TABLES}"
