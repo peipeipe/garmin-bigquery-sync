@@ -183,7 +183,7 @@ jobs:
           fi
       
       - name: Delete existing tables (temporary - remove after fix)
-        if: (steps.import_data.outputs.import_status == 'success' || steps.import_data.outputs.import_status == 'no_new_data') && inputs.sync_mode == 'full_refresh'
+        if: (steps.import_data.outputs.import_status == 'success' || steps.import_data.outputs.import_status == 'no_new_data') && inputs.replace_tables == true
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           DATASET_ID: garmin_data
@@ -201,16 +201,15 @@ jobs:
           echo "Sync mode: ${SYNC_MODE}"
           echo "Replace tables: ${REPLACE_TABLES}"
 
-          if [ "${SYNC_MODE}" == "full_refresh" ]; then
+          # replace_tables=true なら常にfull_refreshモード（テーブル置換）
+          if [ "${REPLACE_TABLES}" == "true" ]; then
+            echo "🔄 Replace mode: replacing all data in BigQuery..."
+            export SYNC_MODE="full_refresh"
+          elif [ "${SYNC_MODE}" == "full_refresh" ]; then
             echo "🔄 Full refresh: replacing all data in BigQuery..."
           elif [ "${SYNC_MODE}" == "year_range" ]; then
-            if [ "${REPLACE_TABLES}" == "true" ]; then
-              echo "📅 Year range with REPLACE: clearing tables and inserting data..."
-              export SYNC_MODE="full_refresh"
-            else
-              echo "📅 Year range: using MERGE to add historical data..."
-              export SYNC_MODE="incremental"
-            fi
+            echo "📅 Year range: using MERGE to add historical data..."
+            export SYNC_MODE="incremental"
           else
             echo "🔀 Incremental: using MERGE (upsert) to prevent duplicates..."
           fi
