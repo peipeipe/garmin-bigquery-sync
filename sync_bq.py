@@ -395,9 +395,16 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, s
             print(f"  ⚠️  Table '{validated_table_name}' not found in {db_file}. Skipping.")
             return 0
 
-        # Read table from SQLite - use parameterized query via pandas
-        # The table name has been validated to contain only safe characters
-        df = pd.read_sql_query(f"SELECT * FROM {validated_table_name}", conn)
+        # Build SELECT query with only columns defined in TABLE_SCHEMAS
+        # This avoids type conversion issues with undefined columns
+        if validated_table_name in TABLE_SCHEMAS:
+            schema_columns = [field.name for field in TABLE_SCHEMAS[validated_table_name]]
+            columns_sql = ", ".join(schema_columns)
+            query = f"SELECT {columns_sql} FROM {validated_table_name}"
+        else:
+            query = f"SELECT * FROM {validated_table_name}"
+
+        df = pd.read_sql_query(query, conn)
 
         # Convert datetime columns to proper pandas types for pyarrow compatibility
         df = convert_datetime_columns(df, validated_table_name)
