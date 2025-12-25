@@ -182,9 +182,12 @@ jobs:
             fi
           fi
       
-      - name: Debug schema (temporary)
-        if: steps.import_data.outputs.import_status == 'success' || steps.import_data.outputs.import_status == 'no_new_data'
-        run: python debug_schema.py
+      - name: Delete existing tables (temporary - remove after fix)
+        if: (steps.import_data.outputs.import_status == 'success' || steps.import_data.outputs.import_status == 'no_new_data') && inputs.sync_mode == 'full_refresh'
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          DATASET_ID: garmin_data
+        run: python delete_tables.py
 
       - name: Sync to BigQuery
         # Run if import was successful OR if import had no new data but database exists
