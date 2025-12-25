@@ -33,98 +33,6 @@ TABLE_PRIMARY_KEYS = {
 }
 
 
-# Schema definitions for common GarminDB tables
-# Used to create empty tables when no data exists yet
-TABLE_SCHEMAS = {
-    'daily_summary': [
-        bigquery.SchemaField("day", "DATE"),
-        bigquery.SchemaField("hr_min", "INTEGER"),
-        bigquery.SchemaField("hr_avg", "FLOAT"),
-        bigquery.SchemaField("hr_max", "INTEGER"),
-        bigquery.SchemaField("rhr", "INTEGER"),
-        bigquery.SchemaField("stress_avg", "INTEGER"),
-        bigquery.SchemaField("step_goal", "INTEGER"),
-        bigquery.SchemaField("steps", "INTEGER"),
-        bigquery.SchemaField("moderate_activity_time", "INTEGER"),
-        bigquery.SchemaField("vigorous_activity_time", "INTEGER"),
-        bigquery.SchemaField("intensity_time", "INTEGER"),
-        bigquery.SchemaField("floors_up", "FLOAT"),
-        bigquery.SchemaField("floors_down", "FLOAT"),
-        bigquery.SchemaField("distance", "FLOAT"),
-        bigquery.SchemaField("calories_goal", "INTEGER"),
-        bigquery.SchemaField("calories_total", "INTEGER"),
-        bigquery.SchemaField("calories_bmr", "INTEGER"),
-        bigquery.SchemaField("calories_active", "INTEGER"),
-        bigquery.SchemaField("activities", "INTEGER"),
-        bigquery.SchemaField("activities_distance", "FLOAT"),
-        bigquery.SchemaField("hydration_goal", "INTEGER"),
-        bigquery.SchemaField("hydration_intake", "INTEGER"),
-        bigquery.SchemaField("sweat_loss", "INTEGER"),
-        bigquery.SchemaField("spo2_avg", "FLOAT"),
-        bigquery.SchemaField("spo2_min", "FLOAT"),
-        bigquery.SchemaField("rr_waking_avg", "FLOAT"),
-        bigquery.SchemaField("rr_max", "FLOAT"),
-        bigquery.SchemaField("rr_min", "FLOAT"),
-        bigquery.SchemaField("bb_charged", "FLOAT"),
-        bigquery.SchemaField("bb_max", "FLOAT"),
-        bigquery.SchemaField("bb_min", "FLOAT"),
-        bigquery.SchemaField("description", "STRING"),
-    ],
-    'activities': [
-        bigquery.SchemaField("activity_id", "STRING"),
-        bigquery.SchemaField("name", "STRING"),
-        bigquery.SchemaField("description", "STRING"),
-        bigquery.SchemaField("type", "STRING"),
-        bigquery.SchemaField("sport", "STRING"),
-        bigquery.SchemaField("sub_sport", "STRING"),
-        bigquery.SchemaField("start_time", "TIMESTAMP"),
-        bigquery.SchemaField("stop_time", "TIMESTAMP"),
-        bigquery.SchemaField("elapsed_time", "FLOAT"),
-        bigquery.SchemaField("moving_time", "FLOAT"),
-        bigquery.SchemaField("distance", "FLOAT"),
-        bigquery.SchemaField("calories", "INTEGER"),
-        bigquery.SchemaField("hr_avg", "INTEGER"),
-        bigquery.SchemaField("hr_max", "INTEGER"),
-        bigquery.SchemaField("speed_avg", "FLOAT"),
-        bigquery.SchemaField("speed_max", "FLOAT"),
-        bigquery.SchemaField("cadence_avg", "FLOAT"),
-        bigquery.SchemaField("cadence_max", "FLOAT"),
-        bigquery.SchemaField("ascent", "FLOAT"),
-        bigquery.SchemaField("descent", "FLOAT"),
-    ],
-    'sleep': [
-        bigquery.SchemaField("day", "DATE"),
-        bigquery.SchemaField("start", "TIMESTAMP"),
-        bigquery.SchemaField("end", "TIMESTAMP"),
-        bigquery.SchemaField("total_sleep", "FLOAT"),
-        bigquery.SchemaField("deep_sleep", "FLOAT"),
-        bigquery.SchemaField("light_sleep", "FLOAT"),
-        bigquery.SchemaField("rem_sleep", "FLOAT"),
-        bigquery.SchemaField("awake", "FLOAT"),
-        bigquery.SchemaField("avg_spo2", "FLOAT"),
-        bigquery.SchemaField("avg_rr", "FLOAT"),
-        bigquery.SchemaField("avg_hr", "FLOAT"),
-    ],
-    'stress': [
-        bigquery.SchemaField("timestamp", "TIMESTAMP"),
-        bigquery.SchemaField("stress", "INTEGER"),
-    ],
-    'weight': [
-        bigquery.SchemaField("day", "DATE"),
-        bigquery.SchemaField("weight", "FLOAT"),
-        bigquery.SchemaField("bmi", "FLOAT"),
-        bigquery.SchemaField("body_fat", "FLOAT"),
-        bigquery.SchemaField("body_water", "FLOAT"),
-        bigquery.SchemaField("bone_mass", "FLOAT"),
-        bigquery.SchemaField("muscle_mass", "FLOAT"),
-    ],
-    'resting_hr': [
-        bigquery.SchemaField("day", "DATE"),
-        bigquery.SchemaField("resting_hr", "INTEGER"),
-    ],
-}
-
-
 def ensure_dataset_exists(client, project_id, dataset_id, location=None):
     """
     Ensure BigQuery dataset exists, create if not.
@@ -309,28 +217,11 @@ def merge_to_bigquery(df, table_name, project_id, dataset_id, client):
             print(f"  ⚠️  Failed to delete staging table: {e}")
 
 
-def get_table_schema_for_gbq(table_name):
-    """
-    Convert BigQuery SchemaField objects to pandas-gbq table_schema format.
-
-    Args:
-        table_name: Name of the table
-
-    Returns:
-        list: Schema in pandas-gbq format [{'name': 'col', 'type': 'TYPE'}, ...] or None
-    """
-    if table_name not in TABLE_SCHEMAS:
-        return None
-
-    return [{'name': field.name, 'type': field.field_type} for field in TABLE_SCHEMAS[table_name]]
-
-
 def convert_datetime_columns(df, table_name):
     """
     Convert datetime columns to pandas datetime type based on column names.
 
-    This uses column name patterns to detect date/timestamp columns,
-    independent of TABLE_SCHEMAS definitions.
+    This uses column name patterns to detect date/timestamp columns.
 
     Args:
         df: pandas DataFrame
@@ -402,20 +293,7 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, s
         row_count = len(df)
 
         if df.empty:
-            print(f"  ⚠️  Table '{validated_table_name}' is empty in SQLite")
-            # Create empty table in BigQuery with schema if available
-            if validated_table_name in TABLE_SCHEMAS:
-                print(f"  📋 Creating empty table with predefined schema in BigQuery...")
-                try:
-                    table_ref = f"{project_id}.{destination_table}"
-                    schema = TABLE_SCHEMAS[validated_table_name]
-                    table = bigquery.Table(table_ref, schema=schema)
-                    client.create_table(table, exists_ok=True)
-                    print(f"  ✓ Empty table created/verified at {project_id}.{destination_table}")
-                except Exception as e:
-                    print(f"  ⚠️  Failed to create empty table: {type(e).__name__}: {e}")
-            else:
-                print(f"  ℹ️  No predefined schema available for {validated_table_name}, skipping empty table creation")
+            print(f"  ⚠️  Table '{validated_table_name}' is empty in SQLite, skipping")
             return 0
 
         print(f"  📊 Read {row_count} rows from {validated_table_name} ({db_file})")
