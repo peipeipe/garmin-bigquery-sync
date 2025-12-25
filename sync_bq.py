@@ -327,32 +327,29 @@ def get_table_schema_for_gbq(table_name):
 
 def convert_datetime_columns(df, table_name):
     """
-    Convert datetime columns to pandas datetime type based on TABLE_SCHEMAS.
+    Convert datetime columns to pandas datetime type based on column names.
 
-    This is necessary because SQLite stores datetimes as strings, and pyarrow
-    needs proper datetime types when using explicit schemas.
+    This uses column name patterns to detect date/timestamp columns,
+    independent of TABLE_SCHEMAS definitions.
 
     Args:
         df: pandas DataFrame
-        table_name: Name of the table (to look up schema)
+        table_name: Name of the table (unused, kept for compatibility)
 
     Returns:
         DataFrame with converted datetime columns
     """
-    if table_name not in TABLE_SCHEMAS:
-        return df
+    # Date columns (normalize to midnight for DATE type)
+    date_columns = ['day']
 
-    # Find TIMESTAMP and DATE columns from schema
-    for field in TABLE_SCHEMAS[table_name]:
-        if field.name in df.columns:
-            if field.field_type == 'TIMESTAMP':
-                # Convert to datetime64[ns] for pyarrow compatibility
-                df[field.name] = pd.to_datetime(df[field.name], errors='coerce')
-            elif field.field_type == 'DATE':
-                # Convert to datetime64[ns] and normalize to midnight
-                # Keep as datetime64 (not Python date) for pyarrow compatibility
-                # BigQuery schema will convert to DATE
-                df[field.name] = pd.to_datetime(df[field.name], errors='coerce').dt.normalize()
+    # Timestamp columns
+    timestamp_columns = ['timestamp', 'start', 'end', 'start_time', 'stop_time']
+
+    for col in df.columns:
+        if col in date_columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce').dt.normalize()
+        elif col in timestamp_columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce')
 
     return df
 
@@ -398,16 +395,6 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, s
         # Read all columns from SQLite
         df = pd.read_sql_query(f"SELECT * FROM {validated_table_name}", conn)
 
-        # Filter to only columns defined in TABLE_SCHEMAS (if defined)
-        # This avoids type conversion issues with undefined columns
-        if validated_table_name in TABLE_SCHEMAS:
-            schema_columns = [field.name for field in TABLE_SCHEMAS[validated_table_name]]
-            # Only keep columns that exist in both schema and DataFrame
-            available_columns = [col for col in schema_columns if col in df.columns]
-            if available_columns:
-                df = df[available_columns]
-                print(f"  📋 Using {len(available_columns)}/{len(schema_columns)} schema columns")
-
         # Convert datetime columns to proper pandas types for pyarrow compatibility
         df = convert_datetime_columns(df, validated_table_name)
 
@@ -445,16 +432,14 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, s
                     print(f"    {col}: {val} (type: {type(val).__name__})")
 
         if sync_mode == 'full_refresh':
-            # Full refresh: replace entire table with explicit schema
-            # Use predefined schema to ensure correct types (prevents NULL columns becoming STRING)
-            table_schema = get_table_schema_for_gbq(validated_table_name)
+            # Full refresh: replace entire table
+            # Let pyarrow infer types to avoid conversion errors
             to_gbq(
                 df,
                 destination_table=destination_table,
                 project_id=project_id,
                 if_exists='replace',
-                progress_bar=False,
-                table_schema=table_schema
+                progress_bar=False
             )
             print(f"  ✅ Uploaded {row_count} rows (🔄 replacing) to {project_id}.{destination_table}")
         else:
@@ -464,16 +449,15 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, s
                 table_ref = f"{project_id}.{destination_table}"
                 client.get_table(table_ref)
             except google_exceptions.NotFound:
-                # Table doesn't exist, create it first with initial data and explicit schema
+                # Table doesn't exist, create it first with initial data
+                # Let pyarrow infer types to avoid schema mismatch errors
                 print(f"  📋 Target table doesn't exist, creating with initial data...")
-                table_schema = get_table_schema_for_gbq(validated_table_name)
                 to_gbq(
                     df,
                     destination_table=destination_table,
                     project_id=project_id,
                     if_exists='replace',
-                    progress_bar=False,
-                    table_schema=table_schema
+                    progress_bar=False
                 )
                 print(f"  ✅ Created table with {row_count} rows at {project_id}.{destination_table}")
                 return row_count
