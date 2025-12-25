@@ -424,6 +424,17 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, s
 
         print(f"  📊 Read {row_count} rows from {validated_table_name} ({db_file})")
 
+        # Debug: show dtypes and problematic columns
+        if os.getenv('DEBUG_SCHEMA'):
+            print(f"  [DEBUG] DataFrame dtypes:")
+            for col, dtype in df.dtypes.items():
+                print(f"    {col}: {dtype}")
+            print(f"  [DEBUG] Sample data (first row):")
+            if not df.empty:
+                for col in df.columns:
+                    val = df[col].iloc[0]
+                    print(f"    {col}: {val} (type: {type(val).__name__})")
+
         if sync_mode == 'full_refresh':
             # Full refresh: replace entire table with explicit schema
             # Use predefined schema to ensure correct types (prevents NULL columns becoming STRING)

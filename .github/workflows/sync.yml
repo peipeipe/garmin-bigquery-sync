@@ -197,6 +197,7 @@ jobs:
           DATASET_ID: garmin_data
           SYNC_MODE: ${{ steps.import_data.outputs.sync_mode }}
           REPLACE_TABLES: ${{ inputs.replace_tables }}
+          DEBUG_SCHEMA: "1"
         run: |
           echo "Sync mode: ${SYNC_MODE}"
           echo "Replace tables: ${REPLACE_TABLES}"
