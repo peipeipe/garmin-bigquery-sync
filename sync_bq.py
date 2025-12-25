@@ -395,16 +395,18 @@ def sync_table_to_bigquery(db_dir, table_name, project_id, dataset_id, client, s
             print(f"  ⚠️  Table '{validated_table_name}' not found in {db_file}. Skipping.")
             return 0
 
-        # Build SELECT query with only columns defined in TABLE_SCHEMAS
+        # Read all columns from SQLite
+        df = pd.read_sql_query(f"SELECT * FROM {validated_table_name}", conn)
+
+        # Filter to only columns defined in TABLE_SCHEMAS (if defined)
         # This avoids type conversion issues with undefined columns
         if validated_table_name in TABLE_SCHEMAS:
             schema_columns = [field.name for field in TABLE_SCHEMAS[validated_table_name]]
-            columns_sql = ", ".join(schema_columns)
-            query = f"SELECT {columns_sql} FROM {validated_table_name}"
-        else:
-            query = f"SELECT * FROM {validated_table_name}"
-
-        df = pd.read_sql_query(query, conn)
+            # Only keep columns that exist in both schema and DataFrame
+            available_columns = [col for col in schema_columns if col in df.columns]
+            if available_columns:
+                df = df[available_columns]
+                print(f"  📋 Using {len(available_columns)}/{len(schema_columns)} schema columns")
 
         # Convert datetime columns to proper pandas types for pyarrow compatibility
         df = convert_datetime_columns(df, validated_table_name)
