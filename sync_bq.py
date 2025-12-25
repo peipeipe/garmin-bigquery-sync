@@ -346,9 +346,13 @@ def convert_datetime_columns(df, table_name):
     for field in TABLE_SCHEMAS[table_name]:
         if field.name in df.columns:
             if field.field_type == 'TIMESTAMP':
+                # Convert to datetime64[ns] for pyarrow compatibility
                 df[field.name] = pd.to_datetime(df[field.name], errors='coerce')
             elif field.field_type == 'DATE':
-                df[field.name] = pd.to_datetime(df[field.name], errors='coerce').dt.date
+                # Convert to datetime64[ns] and normalize to midnight
+                # Keep as datetime64 (not Python date) for pyarrow compatibility
+                # BigQuery schema will convert to DATE
+                df[field.name] = pd.to_datetime(df[field.name], errors='coerce').dt.normalize()
 
     return df
 
