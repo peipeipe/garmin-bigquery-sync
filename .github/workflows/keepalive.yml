@@ -14,5 +14,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Keepalive
-        uses: gautamkrishnar/keepalive-workflow@v2
+      - name: Keepalive commit
+        run: |
+          LAST_COMMIT_DATE=$(git log -1 --format=%ct)
+          CURRENT_DATE=$(date +%s)
+          DAYS_SINCE=$((($CURRENT_DATE - $LAST_COMMIT_DATE) / 86400))
+
+          if [ $DAYS_SINCE -gt 50 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "chore: keepalive commit to prevent workflow disabling"
+            git push
+            echo "✅ Keepalive commit created (${DAYS_SINCE} days since last commit)"
+          else
+            echo "⏭️ Skipped: last commit was ${DAYS_SINCE} days ago (threshold: 50)"
+          fi
